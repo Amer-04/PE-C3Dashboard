@@ -1,0 +1,53 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using NJTruckCharging.Application.Abstractions;
+using NJTruckCharging.Application.Import;
+using NJTruckCharging.Infrastructure.Persistence;
+
+namespace NJTruckCharging.Infrastructure;
+
+public static class DatabaseInitializer
+{
+    /// <summary>
+    /// Applies migrations and, when the database is empty, imports the workbook configured at
+    /// <c>Import:WorkbookPath</c> (relative paths are resolved from the API's content root).
+    /// </summary>
+    public static async Task InitializeDatabaseAsync(this IServiceProvider services, CancellationToken ct = default)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitializer");
+        var config = sp.GetRequiredService<IConfiguration>();
+        var db = sp.GetRequiredService<AppDbContext>();
+
+        if (db.Database.GetMigrations().Any())
+            await db.Database.MigrateAsync(ct);
+        else
+            await db.Database.EnsureCreatedAsync(ct);
+
+        if (await sp.GetRequiredService<IWriteStore>().HasSitesAsync(ct))
+            return;
+
+        var path = config["Import:WorkbookPath"];
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            logger.LogWarning("Database is empty and Import:WorkbookPath is not set. POST the workbook to /api/admin/import.");
+            return;
+        }
+
+        var env = sp.GetRequiredService<IHostEnvironment>();
+        var full = Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(env.ContentRootPath, path));
+        if (!File.Exists(full))
+        {
+            logger.LogWarning("Workbook not found at {Path}. POST the workbook to /api/admin/import.", full);
+            return;
+        }
+
+        logger.LogInformation("Seeding database from {Path} …", full);
+        await using var stream = File.OpenRead(full);
+        await sp.GetRequiredService<ImportService>().ImportAsync(stream, ct);
+    }
+}

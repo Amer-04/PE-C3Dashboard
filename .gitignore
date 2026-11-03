@@ -1,0 +1,38 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+appsettings.*.local.json
+
+# Angular
+node_modules/
+dist/
+.angular/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database backups (never commit)
+backups/
+*.bak
+
+# Local secrets / configuration (use dotnet user-secrets or environment variables; see docs/config/*.example)
+secrets.json
+appsettings.Local.json
+appsettings.*.Local.json
+.env
+.env.*
+*.env
+!docs/config/*.example
+!docs/config/*.example.json
+
+# Candidate workbook (owner mailing addresses etc.) — kept out of the public repo
+data/*.xlsx
+
+# Local working screenshots / media
+Claude outputs/
+*.mp4
+*.m4a

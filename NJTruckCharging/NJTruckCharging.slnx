@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="NJTruckCharging.Application/NJTruckCharging.Application.csproj" />
+  <Project Path="NJTruckCharging.Domain/NJTruckCharging.Domain.csproj" />
+  <Project Path="NJTruckCharging.Infrastructure/NJTruckCharging.Infrastructure.csproj" />
+  <Project Path="NJTruckCharging/NJTruckCharging.csproj" />
+  <Project Path="NJTruckCharging.Tests/NJTruckCharging.Tests.csproj" />
+</Solution>

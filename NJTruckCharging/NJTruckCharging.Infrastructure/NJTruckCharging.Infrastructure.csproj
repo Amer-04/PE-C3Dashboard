@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
+    <!-- Pin patched version: SqlClient pulls a vulnerable System.Security.Cryptography.Pkcs
+         (GHSA-846f-f764-76mx). 10.0.14 matches the net10.0 runtime and satisfies SqlClient's minimum. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NJTruckCharging.Application\NJTruckCharging.Application.csproj" />
+    <ProjectReference Include="..\NJTruckCharging.Domain\NJTruckCharging.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

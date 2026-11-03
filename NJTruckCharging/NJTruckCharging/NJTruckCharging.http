@@ -1,0 +1,25 @@
+@api = http://localhost:5172
+
+GET {{api}}/api/dashboard/summary?segments=3&segments=4
+Accept: application/json
+
+###
+GET {{api}}/api/sites?topN=10&pageSize=20
+Accept: application/json
+
+###
+GET {{api}}/api/sites/map?minScore=90
+Accept: application/json
+
+###
+GET {{api}}/api/sites/1
+Accept: application/json
+
+###
+GET {{api}}/api/power-edison-sites
+
+###
+GET {{api}}/api/sites/export?topN=100&excludeFloodZone=true
+
+###
+POST {{api}}/api/admin/rescore
