@@ -98,6 +98,23 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         await db.SaveChangesAsync();
     }
 
+    /// <summary>Sets (or clears) the source-data business phone of one seeded candidate.</summary>
+    public async Task SetBusinessPhoneAsync(string siteId, string? phone)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE CandidateSites SET BusinessPhone = {phone} WHERE SiteId = {siteId}");
+    }
+
+    /// <summary>Sets the imported business listing / owner mailing fields of one seeded candidate (null clears).</summary>
+    public async Task SetListingAsync(string siteId, string? businesses, string? phone, string? addr, string? city, string? zip)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE CandidateSites SET BusinessesOnSite = {businesses}, BusinessPhone = {phone}, OwnerMailAddress = {addr}, OwnerMailCity = {city}, OwnerMailZip = {zip} WHERE SiteId = {siteId}");
+    }
+
     /// <summary>A sample candidate SiteId that exists in the seeded data.</summary>
     public string SampleSiteId => "TEST-0001";
 

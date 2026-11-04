@@ -295,6 +295,108 @@ public partial class ApiIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task Table_shows_the_most_relevant_contact_and_matches_the_research_csv()
+    {
+        var client = Client();
+        await SeedResearchStates(client);
+        // A second, more relevant verified contact on TEST-0002: a property owner outranks a facility manager.
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/contacts", new
+        {
+            siteId = "TEST-0002", name = "Olive Owner", contactType = "PropertyOwner", verificationStatus = "Verified",
+            sourceUrl = Src, jobTitle = "Managing Member", organization = "Owner LLC", email = "olive@owner.example"
+        })).StatusCode);
+
+        async Task<JsonElement> Row(string siteId) =>
+            (await Json(await client.GetAsync($"/api/sites?search={siteId}&page=1&pageSize=5"))).GetProperty("items")
+                .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == siteId);
+
+        var top = (await Row("TEST-0002")).GetProperty("topContact");
+        Assert.Equal("Olive Owner", top.GetProperty("name").GetString());
+        Assert.Equal("PropertyOwner", top.GetProperty("role").GetString());
+        Assert.True(top.GetProperty("verified").GetBoolean());
+        Assert.Equal("olive@owner.example", top.GetProperty("email").GetString());
+        Assert.Equal(JsonValueKind.Null, top.GetProperty("phone").ValueKind); // not recorded -> not invented
+        Assert.Equal(1, top.GetProperty("otherContacts").GetInt32());
+
+        var lead = (await Row("TEST-0004")).GetProperty("topContact");
+        Assert.False(lead.GetProperty("verified").GetBoolean());
+        Assert.Equal("555-0100", lead.GetProperty("phone").GetString());
+        Assert.False((await Row("TEST-0003")).GetProperty("topContact").GetProperty("role").GetString() is "PropertyOwner" or "Broker");
+        Assert.Equal(JsonValueKind.Null, (await Row("TEST-0006")).GetProperty("topContact").ValueKind);
+
+        // Same contact in the research CSV, and in Site Details.
+        var csv = ParseCsv(Encoding.UTF8.GetString(await client.GetByteArrayAsync("/api/sites/export?format=research&search=TEST-000")).TrimStart('﻿'));
+        var h = csv[0];
+        string Cell(string siteId, string col) => csv.Skip(1).Single(r => r[0] == siteId)[Array.IndexOf(h, col)];
+        foreach (var siteId in new[] { "TEST-0002", "TEST-0003", "TEST-0004", "TEST-0006" })
+        {
+            var row = await Row(siteId);
+            var tc = row.GetProperty("topContact");
+            Assert.Equal(tc.ValueKind == JsonValueKind.Null ? "" : tc.GetProperty("name").GetString(), Cell(siteId, "contact_name"));
+            Assert.Equal(tc.ValueKind == JsonValueKind.Null ? "" : tc.GetProperty("verified").GetBoolean() ? "Verified" : "Unverified", Cell(siteId, "contact_status"));
+            var detail = await Json(await client.GetAsync($"/api/sites/{row.GetProperty("id").GetInt32()}"));
+            Assert.Equal(tc.ToString(), detail.GetProperty("summary").GetProperty("topContact").ToString());
+        }
+    }
+
+    [Fact]
+    public async Task Listed_business_phone_is_shown_as_source_data_and_never_counts_as_a_contact()
+    {
+        var client = Client();
+        await _factory.SetBusinessPhoneAsync("TEST-0007", "+19735550100");
+        try
+        {
+            async Task<JsonElement> Row(string siteId) =>
+                (await Json(await client.GetAsync($"/api/sites?search={siteId}&page=1&pageSize=5"))).GetProperty("items")
+                    .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == siteId);
+            var row = await Row("TEST-0007");
+            Assert.Equal("+19735550100", row.GetProperty("businessPhone").GetString());
+            Assert.Equal("NoContact", row.GetProperty("contactReadiness").GetString()); // a listed line is not a contact
+            Assert.Equal(JsonValueKind.Null, row.GetProperty("topContact").ValueKind);
+            Assert.Equal(JsonValueKind.Null, (await Row("TEST-0008")).GetProperty("businessPhone").ValueKind); // nothing invented
+            Assert.Equal(1, await TotalFor(client, "contactStates=none&search=TEST-0007"));
+
+            var csv = ParseCsv(Encoding.UTF8.GetString(await client.GetByteArrayAsync("/api/sites/export?format=research&search=TEST-000")).TrimStart('﻿'));
+            var col = Array.IndexOf(csv[0], "business_phone_listed_in_source");
+            Assert.Equal("+19735550100", csv.Skip(1).Single(r => r[0] == "TEST-0007")[col]);
+            Assert.Equal("", csv.Skip(1).Single(r => r[0] == "TEST-0008")[col]);
+        }
+        finally { await _factory.SetBusinessPhoneAsync("TEST-0007", null); }
+    }
+
+    [Fact]
+    public async Task Table_row_shows_the_same_imported_listing_as_site_details_and_csv()
+    {
+        var client = Client();
+        await _factory.SetListingAsync("TEST-0009", "IMC powered by Parts Authority; Powpack", "8008748925", "111 Littleton Rd Ste 100", "Parsippany, Nj", "07054");
+        try
+        {
+            var row = (await Json(await client.GetAsync("/api/sites?search=TEST-0009&page=1&pageSize=5"))).GetProperty("items")
+                .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == "TEST-0009");
+            var detail = await Json(await client.GetAsync($"/api/sites/{row.GetProperty("id").GetInt32()}"));
+            Assert.Equal(detail.GetProperty("summary").GetProperty("businesses").GetString(), row.GetProperty("businesses").GetString());
+            Assert.Equal(detail.GetProperty("businessPhone").GetString(), row.GetProperty("businessPhone").GetString());
+            Assert.Equal(detail.GetProperty("ownerMailAddress").GetString(), row.GetProperty("ownerMailAddress").GetString());
+            Assert.Equal(detail.GetProperty("ownerMailCity").GetString(), row.GetProperty("ownerMailCity").GetString());
+            Assert.Equal(detail.GetProperty("ownerMailZip").GetString(), row.GetProperty("ownerMailZip").GetString());
+            Assert.False(row.GetProperty("businessListingConfirmed").GetBoolean());
+            Assert.Equal("NoContact", row.GetProperty("contactReadiness").GetString()); // an imported listing is not a contact
+
+            var csv = ParseCsv(Encoding.UTF8.GetString(await client.GetByteArrayAsync("/api/sites/export?format=research&search=TEST-0009")).TrimStart('﻿'));
+            var r = csv.Skip(1).Single(x => x[0] == "TEST-0009");
+            Assert.Equal("111 Littleton Rd Ste 100, Parsippany, Nj 07054", r[Array.IndexOf(csv[0], "owner_mailing_address")]);
+            Assert.Equal("8008748925", r[Array.IndexOf(csv[0], "business_phone_listed_in_source")]);
+
+            // A reviewer's evidence-backed business-at-address check marks the listing as confirmed (phone stays unverified).
+            await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0009", itemKey = "BusinessAtAddress", status = "Verified", evidence = "Signage matches (Street View 2026-10)" });
+            var after = (await Json(await client.GetAsync("/api/sites?search=TEST-0009&page=1&pageSize=5"))).GetProperty("items")
+                .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == "TEST-0009");
+            Assert.True(after.GetProperty("businessListingConfirmed").GetBoolean());
+        }
+        finally { await _factory.SetListingAsync("TEST-0009", null, null, null, null, null); }
+    }
+
     /// <summary>Minimal RFC-4180 reader (quoted fields, doubled quotes, embedded commas/newlines).</summary>
     private static List<string[]> ParseCsv(string text)
     {

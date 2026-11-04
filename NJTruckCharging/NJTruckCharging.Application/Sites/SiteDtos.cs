@@ -21,7 +21,15 @@ public sealed record SiteListItemDto(
     IosBasis IosBasis = IosBasis.SourceDerived,
     ScreeningDecision ScreeningDecision = ScreeningDecision.NotReviewed,
     SiteEvidence SiteEvidence = SiteEvidence.Unknown,
-    ContactReadiness ContactReadiness = ContactReadiness.NoContact);
+    ContactReadiness ContactReadiness = ContactReadiness.NoContact,
+    TopContactDto? TopContact = null,
+    /// <summary>Business phone listed in the C3 source data (general business line; not a verified decision-maker).</summary>
+    string? BusinessPhone = null,
+    // Owner mailing address from the C3 parcel record (same fields as Site Details → "Who to contact").
+    string? OwnerMailAddress = null, string? OwnerMailCity = null, string? OwnerMailZip = null,
+    /// <summary>True only when a reviewer verified (with evidence) that the listed business operates at the address.
+    /// The listed phone itself is still unverified.</summary>
+    bool BusinessListingConfirmed = false);
 
 public sealed record ScoreLineDto(string Key, string Label, string Group, double Points, double Max, double Min, string Basis);
 

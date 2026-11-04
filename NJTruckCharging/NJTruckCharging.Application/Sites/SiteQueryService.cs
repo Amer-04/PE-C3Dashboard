@@ -74,7 +74,9 @@ public sealed class SiteQueryService(IReadStore store)
             {
                 IosClassification = ios.Classification, IosBasis = ios.Basis,
                 ScreeningDecision = screening?.Decision ?? ScreeningDecision.NotReviewed,
-                SiteEvidence = validation.SiteEvidence, ContactReadiness = validation.ContactReadiness
+                SiteEvidence = validation.SiteEvidence, ContactReadiness = validation.ContactReadiness,
+                TopContact = ResearchReadiness.TopContact(contacts),
+                BusinessListingConfirmed = BusinessConfirmed(feas)
             },
             ScreeningEvidence = screening?.Evidence,
             ScreeningUpdatedAtUtc = screening?.UpdatedAtUtc,
@@ -123,8 +125,21 @@ public sealed class SiteQueryService(IReadStore store)
         return items.Select(i => i with
         {
             SiteEvidence = ResearchReadiness.Evidence(feas[i.SiteId], i.ScreeningDecision),
-            ContactReadiness = ResearchReadiness.Readiness(contacts[i.SiteId])
+            ContactReadiness = ResearchReadiness.Readiness(contacts[i.SiteId]),
+            TopContact = ResearchReadiness.TopContact(contacts[i.SiteId].ToList()),
+            BusinessListingConfirmed = BusinessConfirmed(feas[i.SiteId])
         }).ToList();
+    }
+
+    /// <summary>A reviewer verified, with evidence, that the listed business operates at the address.</summary>
+    private static bool BusinessConfirmed(IEnumerable<FeasibilityItem> siteItems) =>
+        siteItems.Any(f => f.ItemKey == ResearchReadiness.BusinessKey && f.Status == FeasibilityStatus.Verified && !string.IsNullOrEmpty(f.Evidence));
+
+    private static string? OwnerMailing(CandidateSite s)
+    {
+        var line = string.Join(", ", new[] { s.OwnerMailAddress, s.OwnerMailCity }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        line = string.IsNullOrWhiteSpace(s.OwnerMailZip) ? line : $"{line} {s.OwnerMailZip}".Trim();
+        return line.Length == 0 ? null : line;
     }
 
     /// <summary>Overlays manual outdoor-storage verdicts (IosRules.Resolve) on source-derived list rows.</summary>
@@ -231,7 +246,7 @@ public sealed class SiteQueryService(IReadStore store)
                 s.Block ?? "Unknown", s.Lot ?? "Unknown", s.PamsPin ?? "Unknown",
                 St(ResearchReadiness.ParcelKey), Ev(ResearchReadiness.ParcelKey), Checked(ResearchReadiness.ParcelKey),
                 string.Join(" | ", parcel.Discrepancies),
-                s.BusinessesOnSite ?? "", St(ResearchReadiness.BusinessKey), Ev(ResearchReadiness.BusinessKey),
+                s.BusinessesOnSite ?? "", s.BusinessPhone ?? "", OwnerMailing(s) ?? "", St(ResearchReadiness.BusinessKey), Ev(ResearchReadiness.BusinessKey),
                 s.NearestHighway ?? "Unknown", s.NearestExit ?? "", s.NearestHighway is null ? "Unknown" : F2(s.MilesToExit),
                 St(FeasibilityItemKey.EligibleHighwayAccess), Ev(FeasibilityItemKey.EligibleHighwayAccess),
                 s.OpenAcresEst > 0 ? I((int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre)) : "Unknown",
@@ -262,7 +277,7 @@ public sealed class SiteQueryService(IReadStore store)
         "site_id", "address", "municipality", "county", "segment", "rank", "c3_score",
         "screening_decision", "screening_evidence", "site_evidence", "contact_readiness",
         "parcel_block", "parcel_lot", "pams_pin", "parcel_check_status", "parcel_check_evidence", "parcel_checked_on", "parcel_discrepancies",
-        "business_listed_in_source", "business_at_address_status", "business_at_address_evidence",
+        "business_listed_in_source", "business_phone_listed_in_source", "owner_mailing_address", "business_at_address_status", "business_at_address_evidence",
         "highway", "exit", "miles_to_exit_straight_line", "highway_access_status", "highway_access_evidence",
         "parking_preliminary_estimate", "parking_verified_status", "parking_verified_count", "parking_verified_evidence",
         "truck_entrance_status", "turning_space_status", "truck_access_evidence",
@@ -324,7 +339,12 @@ public sealed class SiteQueryService(IReadStore store)
             s.Latitude, s.Longitude,
             // Preliminary estimate only; null (Unknown) when there is no open-acreage estimate.
             s.OpenAcresEst > 0 ? (int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null,
-            ios, IosBasis.SourceDerived));
+            ios, IosBasis.SourceDerived,
+            ScreeningDecision.NotReviewed, SiteEvidence.Unknown, ContactReadiness.NoContact, null,
+            // Listed general business line from the C3 workbook (Overture places) — shown as-is, never as a contact.
+            s.BusinessPhone,
+            s.OwnerMailAddress, s.OwnerMailCity, s.OwnerMailZip,
+            false));
 
     // Declared after ToListItem: static fields initialise in textual order.
     private static readonly Func<CandidateSite, SiteListItemDto> ToListItemCompiled = ToListItem.Compile();

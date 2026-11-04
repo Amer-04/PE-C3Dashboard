@@ -56,6 +56,21 @@ public class ResearchReadinessTests
         Assert.Null(ResearchReadiness.BestContact([C(ContactType.Broker, ContactVerificationStatus.Invalid)]));
     }
 
+    [Fact]
+    public void Best_contact_prefers_owner_then_broker_then_managers_among_verified()
+    {
+        var energy = C(ContactType.EnergyEfficiencyManager, ContactVerificationStatus.Verified);
+        var broker = C(ContactType.Broker, ContactVerificationStatus.Verified);
+        var owner = C(ContactType.PropertyOwner, ContactVerificationStatus.Verified);
+        Assert.Same(owner, ResearchReadiness.BestContact([energy, broker, owner]));
+        Assert.Same(broker, ResearchReadiness.BestContact([energy, broker]));
+        var top = ResearchReadiness.TopContact([energy, broker, C(ContactType.Other, ContactVerificationStatus.Invalid)])!;
+        Assert.Equal(ContactType.Broker, top.Role);
+        Assert.Equal(1, top.OtherContacts); // invalid contacts are not counted
+        Assert.Null(ResearchReadiness.TopContact([]));
+        Assert.False(ResearchReadiness.TopContact([C(ContactType.PropertyOwner, ContactVerificationStatus.Verified, null)])!.Verified);
+    }
+
     [Theory]
     [InlineData("verified,preliminary,mismatch,unknown,bogus", 4)]
     [InlineData("VERIFIED", 1)]

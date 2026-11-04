@@ -5,10 +5,11 @@ import { SiteStore } from '../../core/site-store';
 import { SavedStore } from '../../core/saved-store';
 import { scoreCss } from '../../shared/score-color';
 import { CompareToggleComponent } from '../compare/compare-toggle.component';
+import { ContactCellComponent } from './contact-cell.component';
 
 @Component({
   selector: 'app-sites-table',
-  imports: [DecimalPipe, CompareToggleComponent],
+  imports: [DecimalPipe, CompareToggleComponent, ContactCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="panel table-panel">
@@ -68,7 +69,7 @@ import { CompareToggleComponent } from '../compare/compare-toggle.component';
                 </td>
                 <td><span class="decision-badge" [attr.data-d]="s.screeningDecision">{{ decisionLabel(s.screeningDecision) }}</span></td>
                 <td><span class="rr-badge" [attr.data-ev]="s.siteEvidence" [title]="evidenceHint(s.siteEvidence)">{{ s.siteEvidence }}</span></td>
-                <td><span class="rr-badge" [attr.data-cr]="s.contactReadiness" [title]="readiness(s.contactReadiness).label + ' — ' + readiness(s.contactReadiness).hint">{{ readiness(s.contactReadiness).short }}</span></td>
+                <td class="contact-col" [attr.data-cr]="s.contactReadiness" [title]="readiness(s.contactReadiness).label + ' — ' + readiness(s.contactReadiness).hint"><app-contact-cell [site]="s" /></td>
                 <td class="save-cell" (click)="$event.stopPropagation()">
                   <button type="button" class="save-btn" [class.on]="saved.isSaved(s.siteId)"
                           [disabled]="saved.isBusy(s.siteId)"

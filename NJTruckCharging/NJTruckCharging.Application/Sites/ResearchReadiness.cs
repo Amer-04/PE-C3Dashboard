@@ -34,6 +34,12 @@ public enum ContactReadiness
     RelevantContactVerified = 3
 }
 
+/// <summary>Most relevant researched contact for a site, as shown in the ranked table.
+/// <paramref name="Verified"/> is true only for a Verified contact with a cited source.</summary>
+public sealed record TopContactDto(
+    string Name, string? JobTitle, string? Organization, ContactType Role,
+    string? Email, string? Phone, bool Verified, string? SourceUrl, int OtherContacts);
+
 /// <summary>
 /// Single source of the Site Evidence and Contact Readiness rules: the in-memory form (list rows, detail, CSV) and the
 /// SQL form (filters) below must stay equivalent — tests compare them.
@@ -73,13 +79,38 @@ public static class ResearchReadiness
             : ContactReadiness.NoContact;
     }
 
-    /// <summary>The contact to show first: verified relevant → verified general → unverified relevant → other lead.</summary>
+    /// <summary>
+    /// The contact to show first (table, Site Details and research CSV): verified relevant → verified general →
+    /// unverified relevant → other lead. Within a group: owner, broker, facility, sustainability, energy manager, then
+    /// others; most recently checked first.
+    /// </summary>
     public static SiteContact? BestContact(IEnumerable<SiteContact> siteContacts) =>
         siteContacts.Where(c => c.VerificationStatus != ContactVerificationStatus.Invalid)
             .OrderBy(c => c.VerificationStatus == ContactVerificationStatus.Verified && IsSourced(c) ? 0 : 1)
             .ThenBy(c => IsRelevantRole(c.ContactType) ? 0 : 1)
+            .ThenBy(c => RolePriority(c.ContactType))
             .ThenByDescending(c => c.LastVerifiedUtc ?? c.UpdatedAtUtc)
+            .ThenBy(c => c.Id)
             .FirstOrDefault();
+
+    /// <summary>Order in which decision-making roles are preferred.</summary>
+    public static int RolePriority(ContactType t) => t switch
+    {
+        ContactType.PropertyOwner => 0, ContactType.Broker => 1, ContactType.FacilityManager => 2,
+        ContactType.SustainabilityManager => 3, ContactType.EnergyEfficiencyManager => 4, _ => 5
+    };
+
+    /// <summary>The best contact as shown in the ranked table (null when none). Only recorded values; nothing inferred.</summary>
+    public static TopContactDto? TopContact(IReadOnlyCollection<SiteContact> siteContacts)
+    {
+        var best = BestContact(siteContacts);
+        if (best is null) return null;
+        var others = siteContacts.Count(c => c != best && c.VerificationStatus != ContactVerificationStatus.Invalid);
+        return new TopContactDto(best.Name, best.JobTitle, best.Organization, best.ContactType,
+            best.Email, best.BusinessPhone,
+            best.VerificationStatus == ContactVerificationStatus.Verified && IsSourced(best),
+            best.SourceUrl, others);
+    }
 
     // ---------------- tokens & labels ----------------
 

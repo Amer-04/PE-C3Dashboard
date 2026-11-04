@@ -124,6 +124,20 @@ export interface SiteListItem {
   screeningDecision: ScreeningDecision;
   siteEvidence: SiteEvidence;
   contactReadiness: ContactReadiness;
+  /** Most relevant researched contact (null = none recorded). Same rule as the research CSV. */
+  topContact?: TopContact | null;
+  /** Business phone listed in the C3 data (general line, not a verified decision-maker). */
+  businessPhone?: string | null;
+  /** Owner mailing address from the C3 parcel record (same as Site Details → Who to contact). */
+  ownerMailAddress?: string | null; ownerMailCity?: string | null; ownerMailZip?: string | null;
+  /** A reviewer verified, with evidence, that the listed business operates at the address. */
+  businessListingConfirmed?: boolean;
+}
+
+/** Most relevant researched contact for a site. `verified` = Verified status with a cited source. */
+export interface TopContact {
+  name: string; jobTitle: string | null; organization: string | null; role: ContactType;
+  email: string | null; phone: string | null; verified: boolean; sourceUrl: string | null; otherContacts: number;
 }
 
 export interface PagedResult<T> { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number; }
