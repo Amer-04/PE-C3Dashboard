@@ -123,14 +123,14 @@ import { SiteSummaryComponent } from './site-summary.component';
               <br /><small class="muted">Source data alone: {{ iosLabel(d.iosDerivedClassification) }}</small>
             }</dd>
           <dt>Truck entrance</dt>
-          <dd><span class="ev-badge" [attr.data-v]="d.truckEntranceStatus">{{ statusLabel(d.truckEntranceStatus) }}</span>
+          <dd><span class="ev-badge" [attr.data-v]="badge(d.truckEntranceStatus, d.truckEntranceEvidenceState)">{{ statusLabel(d.truckEntranceStatus, d.truckEntranceEvidenceState) }}</span>
             @if (d.truckEntranceEvidence) { <br /><small class="muted">{{ d.truckEntranceEvidence }}</small> }</dd>
           <dt>Electrical</dt>
-          <dd><span class="ev-badge" [attr.data-v]="d.electricalStatus">{{ statusLabel(d.electricalStatus) }}</span>
+          <dd><span class="ev-badge" [attr.data-v]="badge(d.electricalStatus, d.electricalEvidenceState)">{{ statusLabel(d.electricalStatus, d.electricalEvidenceState) }}</span>
             @if (d.electricalEvidence) { <br /><small class="muted">{{ d.electricalEvidence }}</small> }</dd>
           <dt>Verified parking</dt>
           <dd>@if (d.parkingStatus !== 'Unknown') {
-              <span class="ev-badge" [attr.data-v]="d.parkingStatus">{{ d.parkingStatus }}</span>
+              <span class="ev-badge" [attr.data-v]="badge(d.parkingStatus, d.parkingEvidenceState)">{{ statusLabel(d.parkingStatus, d.parkingEvidenceState) }}</span>
               @if (d.verifiedParkingEvidence) { <small class="muted"> — {{ d.verifiedParkingEvidence }}</small> }
             } @else { <span class="muted">Not verified</span> }</dd>
           <dt>Decision-maker</dt>
@@ -204,5 +204,10 @@ export class SiteDetailComponent {
 
   protected shorten(v: string | null) { return v && v.length > 40 ? v.slice(0, 40) + '…' : v; }
   protected iosLabel(c: IosClassification) { return IOS_LABELS[c] ?? c; }
-  protected statusLabel(s: string) { return s === 'Unknown' ? 'Not reviewed' : s; }
+  /** A Verified verdict without evidence text, source URL and evidence date is shown as "Insufficient evidence". */
+  protected statusLabel(s: string, state?: string) {
+    if (state === 'InsufficientEvidence') return 'Insufficient evidence';
+    return s === 'Unknown' ? 'Not reviewed' : s === 'Conflicting' ? 'Conflicting evidence' : s;
+  }
+  protected badge(s: string, state?: string) { return state === 'InsufficientEvidence' ? 'Insufficient' : s; }
 }

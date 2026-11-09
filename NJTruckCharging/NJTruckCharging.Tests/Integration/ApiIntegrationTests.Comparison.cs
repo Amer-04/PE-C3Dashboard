@@ -75,8 +75,8 @@ public partial class ApiIntegrationTests
     public async Task Compare_reflects_reviewer_verdicts_and_flags_differences()
     {
         var client = Client();
-        await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0001", itemKey = "TruckEntranceAccess", status = "Verified", evidence = "Two 40ft curb cuts" });
-        await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0001", itemKey = "TruckParkingCapacity", status = "Verified", evidence = "48 marked trailer stalls" });
+        await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0001", itemKey = "TruckEntranceAccess", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", evidence = "Two 40ft curb cuts" });
+        await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0001", itemKey = "TruckParkingCapacity", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", evidence = "48 marked trailer stalls" });
         await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0007", itemKey = "ElectricalService", status = "Concern", evidence = "Utility says 18-month upgrade" });
 
         var cmp = await Json(await client.GetAsync("/api/compare?siteIds=TEST-0007,TEST-0001")); // comma list, order kept
@@ -135,7 +135,7 @@ public partial class ApiIntegrationTests
                 $"{i.GetProperty("siteId").GetString()}:{i.GetProperty("score").GetDouble()}:{i.GetProperty("rank").GetInt32()}"));
         }
         var before = await Snapshot();
-        await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0007", itemKey = "OutdoorStorageUse", status = "Verified", evidence = "Trailer yard observed" });
+        await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0007", itemKey = "OutdoorStorageUse", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", evidence = "Trailer yard observed" });
         await Json(await client.GetAsync("/api/compare?siteIds=TEST-0001&siteIds=TEST-0007&siteIds=TEST-0003"));
         await client.GetAsync("/api/compare/export?siteIds=TEST-0001&siteIds=TEST-0007");
         Assert.Equal(before, await Snapshot());

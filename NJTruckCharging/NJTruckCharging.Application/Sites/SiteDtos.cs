@@ -31,7 +31,11 @@ public sealed record SiteListItemDto(
     /// The listed phone itself is still unverified.</summary>
     bool BusinessListingConfirmed = false,
     /// <summary>Website listed with the parcel's business listing in the C3 data (same value Site Details shows).</summary>
-    string? BusinessWebsite = null);
+    string? BusinessWebsite = null,
+    /// <summary>Research completeness: core checks REVIEWED (documented Verified or Concern) out of 8. Not part of the score.</summary>
+    int ResearchReviewed = 0,
+    /// <summary>Research completeness: core checks successfully VERIFIED (documented Verified only) out of 8.</summary>
+    int ResearchVerified = 0);
 
 public sealed record ScoreLineDto(string Key, string Label, string Group, double Points, double Max, double Min, string Basis);
 
@@ -118,6 +122,10 @@ public sealed record SiteDetailDto
     public string? ElectricalEvidence { get; init; }
     /// <summary>Feasibility verdict for truck parking capacity — the VERIFIED parking signal (vs the preliminary estimate).</summary>
     public FeasibilityStatus ParkingStatus { get; init; } = FeasibilityStatus.Unknown;
+    /// <summary>Evidence state of the three verdicts above (a Verified verdict without source/date is InsufficientEvidence).</summary>
+    public Research.CheckState TruckEntranceEvidenceState { get; init; }
+    public Research.CheckState ElectricalEvidenceState { get; init; }
+    public Research.CheckState ParkingEvidenceState { get; init; }
     /// <summary>Reviewer's verified parking evidence (e.g. "48 marked trailer stalls"), when reviewed.</summary>
     public string? VerifiedParkingEvidence { get; init; }
     public int VerifiedContactCount { get; init; }

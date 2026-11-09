@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { CONTACT_READINESS, SCREENING_DECISIONS, SEGMENT_COUNTIES, SITE_EVIDENCE, SiteFilter } from '../../core/models';
+import { CONTACT_READINESS, RESEARCH_STAGES, SCREENING_DECISIONS, SEGMENT_COUNTIES, SITE_EVIDENCE, SiteFilter } from '../../core/models';
 import { SiteStore } from '../../core/site-store';
 import { MethodologyStore } from '../../core/methodology-store';
 
@@ -114,6 +114,17 @@ import { MethodologyStore } from '../../core/methodology-store';
       </fieldset>
 
       <fieldset class="field">
+        <legend>Research completeness</legend>
+        <div class="chips">
+          @for (o of researchOptions; track o.token) {
+            <button type="button" class="chip" [class.on]="f().researchStages.includes(o.token)"
+                    [attr.aria-pressed]="f().researchStages.includes(o.token)" [title]="o.hint" (click)="toggle('researchStages', o.token)">{{ o.label }}</button>
+          }
+        </div>
+        <small class="hint">Eight core verification checks. Separate from the C3 score.</small>
+      </fieldset>
+
+      <fieldset class="field">
         <legend>IOS classification</legend>
         <div class="chips">
           @for (o of iosOptions; track o.key) {
@@ -207,8 +218,9 @@ export class FilterPanelComponent {
   protected readonly screeningOptions = SCREENING_DECISIONS;
   protected readonly evidenceOptions = SITE_EVIDENCE;
   protected readonly contactOptions = CONTACT_READINESS;
+  protected readonly researchOptions = RESEARCH_STAGES;
 
-  protected toggle(key: 'evidenceStates' | 'contactStates', token: string) {
+  protected toggle(key: 'evidenceStates' | 'contactStates' | 'researchStages', token: string) {
     const cur = this.f()[key];
     this.store.patch({ [key]: cur.includes(token) ? cur.filter(c => c !== token) : [...cur, token] } as Partial<SiteFilter>);
   }

@@ -24,7 +24,16 @@ public static class DatabaseInitializer
         var db = sp.GetRequiredService<AppDbContext>();
 
         if (db.Database.GetMigrations().Any())
+        {
+            var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+            var refusal = MigrationGuard.Check(db.Database.GetDbConnection().Database, pending, config);
+            if (refusal is not null)
+            {
+                logger.LogCritical("{Reason}", refusal);
+                throw new InvalidOperationException(refusal);
+            }
             await db.Database.MigrateAsync(ct);
+        }
         else
             await db.Database.EnsureCreatedAsync(ct);
 

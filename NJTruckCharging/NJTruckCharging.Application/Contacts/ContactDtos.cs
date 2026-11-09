@@ -13,7 +13,8 @@ public sealed record CreateContactRequest(
     [EmailAddress] string? Email,
     [Url] string? SourceUrl,
     ContactVerificationStatus? VerificationStatus,
-    string? ResearchNotes);
+    string? ResearchNotes,
+    [MaxLength(200)] string? RecordedBy = null);
 
 public sealed record UpdateContactRequest(
     [Required] string Name,
@@ -24,7 +25,9 @@ public sealed record UpdateContactRequest(
     [EmailAddress] string? Email,
     [Url] string? SourceUrl,
     ContactVerificationStatus VerificationStatus,
-    string? ResearchNotes);
+    string? ResearchNotes,
+    [MaxLength(200)] string? RecordedBy = null,
+    [MaxLength(2000)] string? CorrectionNote = null);
 
 public sealed record SiteContactDto(
     int Id, string SiteId, string Name, string? Organization, string? JobTitle, ContactType ContactType,

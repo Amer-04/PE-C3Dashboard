@@ -120,6 +120,28 @@ public class FeasibilityItemConfiguration : IEntityTypeConfiguration<Feasibility
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Evidence).HasMaxLength(4000);
         b.Property(x => x.Reviewer).HasMaxLength(200);
+        b.Property(x => x.SourceUrl).HasMaxLength(2048);
+        b.Property(x => x.EvidenceDate).HasColumnType("date");
+    }
+}
+
+public class ResearchHistoryEntryConfiguration : IEntityTypeConfiguration<ResearchHistoryEntry>
+{
+    public void Configure(EntityTypeBuilder<ResearchHistoryEntry> b)
+    {
+        b.ToTable("ResearchHistoryEntries");
+        b.Property(x => x.SiteId).HasMaxLength(64).IsRequired();
+        b.HasIndex(x => new { x.SiteId, x.RecordedAtUtc });
+        b.Property(x => x.Subject).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Action).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.ItemKey).HasConversion<string>().HasMaxLength(40);
+        b.Property(x => x.PreviousStatus).HasMaxLength(20);
+        b.Property(x => x.Status).HasMaxLength(20);
+        b.Property(x => x.Evidence).HasMaxLength(4000);
+        b.Property(x => x.SourceUrl).HasMaxLength(2048);
+        b.Property(x => x.EvidenceDate).HasColumnType("date");
+        b.Property(x => x.Note).HasMaxLength(2000);
+        b.Property(x => x.RecordedBy).HasMaxLength(200);
     }
 }
 

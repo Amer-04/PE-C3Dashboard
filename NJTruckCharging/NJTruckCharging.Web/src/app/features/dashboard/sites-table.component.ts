@@ -42,6 +42,7 @@ import { BusinessCellComponent } from './business-cell.component';
               <th>Screening</th>
               <th title="From the team's research records only: parcel check, business at address, screening">Site evidence</th>
               <th title="From researched contacts only; a general company line is not a site decision-maker">Contact readiness</th>
+              <th title="Research completeness — core checks reviewed (documented Verified or Concern) and verified, out of 8. Not part of the score.">Research</th>
               <th>Save</th>
               <th>Compare</th>
             </tr>
@@ -69,8 +70,12 @@ import { BusinessCellComponent } from './business-cell.component';
                   @if (s.nearPowerEdison) { <span class="flag pe" title="Within 2 mi of a Power Edison site">PE ≤2 mi</span> }
                 </td>
                 <td><span class="decision-badge" [attr.data-d]="s.screeningDecision">{{ decisionLabel(s.screeningDecision) }}</span></td>
-                <td><span class="rr-badge" [attr.data-ev]="s.siteEvidence" [title]="evidenceHint(s.siteEvidence)">{{ s.siteEvidence }}</span></td>
+                <td><span class="rr-badge" [attr.data-ev]="s.siteEvidence" [title]="evidenceHint(s.siteEvidence)">{{ evidenceLabel(s.siteEvidence) }}</span></td>
                 <td class="contact-col" [attr.data-cr]="s.contactReadiness" [title]="readiness(s.contactReadiness).label + ' — ' + readiness(s.contactReadiness).hint"><app-contact-cell [site]="s" /></td>
+                <td class="rc-cell" [title]="(s.researchReviewed ?? 0) + ' of 8 core checks reviewed, ' + (s.researchVerified ?? 0) + ' verified'">
+                  @if (s.researchReviewed) { <b>{{ s.researchReviewed }}</b>/8 <small class="muted">· {{ s.researchVerified }} ✓</small> }
+                  @else { <span class="muted">—</span> }
+                </td>
                 <td class="save-cell" (click)="$event.stopPropagation()">
                   <button type="button" class="save-btn" [class.on]="saved.isSaved(s.siteId)"
                           [disabled]="saved.isBusy(s.siteId)"
@@ -85,7 +90,7 @@ import { BusinessCellComponent } from './business-cell.component';
                 </td>
               </tr>
             } @empty {
-              <tr><td colspan="17" class="empty">No sites match these filters.</td></tr>
+              <tr><td colspan="18" class="empty">No sites match these filters.</td></tr>
             }
           </tbody>
         </table>
@@ -110,6 +115,7 @@ export class SitesTableComponent {
   protected sort(by: SiteSort) { this.store.sort(by); }
   protected decisionLabel(d: ScreeningDecision) { return SCREENING_LABELS[d] ?? d; }
   protected evidenceHint(e: SiteEvidence) { return SITE_EVIDENCE.find(x => x.value === e)?.hint ?? ''; }
+  protected evidenceLabel(e: SiteEvidence) { return SITE_EVIDENCE.find(x => x.value === e)?.label ?? e; }
   protected readiness(r: ContactReadiness) { return CONTACT_READINESS.find(x => x.value === r) ?? CONTACT_READINESS[3]; }
 
   /** Select the site and bring the map + detail panel into view. */

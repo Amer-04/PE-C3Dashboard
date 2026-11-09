@@ -13,7 +13,11 @@ public enum ScreeningStatus
 }
 
 /// <summary>A reviewer's feasibility verdict on one item. Unknown = not yet reviewed (never "verified").</summary>
-public sealed record VerificationDto(FeasibilityStatus Status, string? Evidence, DateTimeOffset? ReviewedAtUtc);
+public sealed record VerificationDto(FeasibilityStatus Status, string? Evidence, DateTimeOffset? ReviewedAtUtc)
+{
+    /// <summary>Evidence text, source URL and evidence date are all present (Research.ResearchQuality.IsDocumented).</summary>
+    public bool Documented { get; init; }
+}
 
 /// <summary>A source-data screen result with a plain-language detail.</summary>
 public sealed record ScreeningDto(ScreeningStatus Status, string Detail);

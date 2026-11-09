@@ -17,6 +17,7 @@ public sealed class ReadStore(AppDbContext db) : IReadStore
     public IQueryable<FeasibilityItem> FeasibilityItems => db.FeasibilityItems.AsNoTracking();
     public IQueryable<SiteScreening> SiteScreenings => db.SiteScreenings.AsNoTracking();
     public IQueryable<SiteScreeningEntry> SiteScreeningEntries => db.SiteScreeningEntries.AsNoTracking();
+    public IQueryable<ResearchHistoryEntry> ResearchHistory => db.ResearchHistory.AsNoTracking();
     public IQueryable<MethodologyVersion> MethodologyVersions => db.MethodologyVersions.AsNoTracking();
     public IQueryable<MethodologyActivation> MethodologyActivations => db.MethodologyActivations.AsNoTracking();
     public IQueryable<SiteVersionScore> SiteVersionScores => db.SiteVersionScores.AsNoTracking();

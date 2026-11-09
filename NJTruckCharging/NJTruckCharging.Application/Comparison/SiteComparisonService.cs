@@ -75,7 +75,7 @@ public sealed class SiteComparisonService(IReadStore store)
         IReadOnlyDictionary<FeasibilityItemKey, FeasibilityItem> feas, SiteScreening? screening)
     {
         VerificationDto V(FeasibilityItemKey k) => feas.TryGetValue(k, out var f)
-            ? new VerificationDto(f.Status, f.Evidence, f.ReviewedAtUtc)
+            ? new VerificationDto(f.Status, f.Evidence, f.ReviewedAtUtc) { Documented = Research.ResearchQuality.IsDocumented(f) }
             : new VerificationDto(FeasibilityStatus.Unknown, null, null);
 
         var ios = IosRules.Assess(s, feas.GetValueOrDefault(IosRules.ReviewKey));
@@ -100,11 +100,14 @@ public sealed class SiteComparisonService(IReadStore store)
         var missing = AllKeys
             .Where(k => !feas.TryGetValue(k, out var f) || f.Status == FeasibilityStatus.Unknown)
             .Select(FeasibilityLabels.For)
+            // A Verified verdict without evidence text, source URL and evidence date still needs its evidence.
+            .Concat(AllKeys.Where(k => feas.TryGetValue(k, out var f) && f.Status == FeasibilityStatus.Verified && !Research.ResearchQuality.IsDocumented(f))
+                .Select(k => $"{FeasibilityLabels.For(k)} (insufficient evidence)"))
             .ToList();
         if (flood.Status == ScreeningStatus.NotChecked) missing.Add("Flood-zone screening (source data)");
         if (contamination.Status == ScreeningStatus.NotChecked) missing.Add("Contamination screening (source data)");
         var concerns = AllKeys
-            .Where(k => feas.TryGetValue(k, out var f) && f.Status == FeasibilityStatus.Concern)
+            .Where(k => feas.TryGetValue(k, out var f) && f.Status is FeasibilityStatus.Concern or FeasibilityStatus.Conflicting)
             .Select(k => feas[k].Evidence is { Length: > 0 } e ? $"{FeasibilityLabels.For(k)}: {e}" : FeasibilityLabels.For(k))
             .ToList();
 
@@ -189,7 +192,9 @@ public sealed class SiteComparisonService(IReadStore store)
             hint: "Desktop screen at ~15 trailers per open acre. Not a verified or buildable count.");
         Row("verifiedParking", "Parking", "Verified parking capacity", s => s.VerifiedParking.Status switch
         {
+            FeasibilityStatus.Verified when !s.VerifiedParking.Documented => ($"Insufficient evidence — recorded as verified without source/date: {s.VerifiedParking.Evidence ?? "no detail"}", "unknown"),
             FeasibilityStatus.Verified => (s.VerifiedParking.Evidence is { Length: > 0 } e ? $"Verified — {e}" : "Verified (no count recorded)", "verified"),
+            FeasibilityStatus.Conflicting => ($"Conflicting evidence — {s.VerifiedParking.Evidence ?? "no detail recorded"}", "concern"),
             FeasibilityStatus.Concern => ($"Concern — {s.VerifiedParking.Evidence ?? "no detail recorded"}", "concern"),
             _ => ("Not verified", "unknown")
         });
@@ -222,7 +227,9 @@ public sealed class SiteComparisonService(IReadStore store)
 
     private static (string, string) Verdict(VerificationDto v) => v.Status switch
     {
+        FeasibilityStatus.Verified when !v.Documented => ($"Insufficient evidence — recorded as verified without source/date: {v.Evidence ?? "no detail"}", "unknown"),
         FeasibilityStatus.Verified => (v.Evidence is { Length: > 0 } e ? $"Verified — {e}" : "Verified", "verified"),
+        FeasibilityStatus.Conflicting => (v.Evidence is { Length: > 0 } e ? $"Conflicting evidence — {e}" : "Conflicting evidence", "concern"),
         FeasibilityStatus.Concern => (v.Evidence is { Length: > 0 } e ? $"Concern — {e}" : "Concern", "concern"),
         _ => ("Not reviewed", "unknown")
     };

@@ -53,6 +53,9 @@ describe('screening fact helpers', () => {
     expect(contaminationText({ knownContaminatedSites: 2 }).tone).toBe('flag');
     expect(verdictText('Unknown', 'stale note')).toEqual({ text: 'Not reviewed', tone: 'unknown' });
     expect(verdictText('Verified', '48 stalls').text).toBe('Verified — 48 stalls');
+    expect(verdictText('Verified', 'curb cuts', 'InsufficientEvidence')).toEqual({ text: 'Insufficient evidence — curb cuts', tone: 'unknown' });
+    expect(verdictText('Verified', '48 stalls', 'Verified').text).toBe('Verified — 48 stalls');
+    expect(verdictText('Conflicting', 'map vs letter')).toEqual({ text: 'Conflicting evidence — map vs letter', tone: 'concern' });
   });
 });
 

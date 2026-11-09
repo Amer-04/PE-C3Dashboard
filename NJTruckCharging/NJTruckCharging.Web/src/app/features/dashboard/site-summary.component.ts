@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { CONTACT_READINESS, SiteSuitability, SiteValidation, SuitabilityAnswer, SuitabilityBasis } from '../../core/models';
+import { CONTACT_READINESS, SiteSuitability, SiteValidation, SuitabilityAnswer, SuitabilityBasis, siteEvidenceLabel } from '../../core/models';
 
 const ANSWER: Record<SuitabilityAnswer, { icon: string; label: string }> = {
   Yes: { icon: '✓', label: 'Yes' },
@@ -14,6 +14,8 @@ const BASIS: Record<SuitabilityBasis, string> = {
   SourceData: 'Public records',
   Unverified: 'Unverified lead',
   Missing: 'No data',
+  InsufficientEvidence: 'Insufficient evidence',
+  Conflicting: 'Conflicting evidence',
 };
 
 /**
@@ -39,7 +41,7 @@ const BASIS: Record<SuitabilityBasis, string> = {
             <div class="val-head">
               <b>What is confirmed</b>
               <span class="small">
-                Site evidence <span class="rr-badge" [attr.data-ev]="v.siteEvidence">{{ v.siteEvidence }}</span>
+                Site evidence <span class="rr-badge" [attr.data-ev]="v.siteEvidence">{{ evLabel(v.siteEvidence) }}</span>
                 · Contact <span class="rr-badge" [attr.data-cr]="v.contactReadiness">{{ readiness(v.contactReadiness) }}</span>
               </span>
             </div>
@@ -126,6 +128,7 @@ export class SiteSummaryComponent {
 
   protected readonly answer = (a: SuitabilityAnswer) => ANSWER[a] ?? ANSWER.Unknown;
   protected readonly basis = (b: SuitabilityBasis) => BASIS[b] ?? b;
+  protected readonly evLabel = siteEvidenceLabel;
 
   protected toggle(key: string) {
     this.open.update(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });

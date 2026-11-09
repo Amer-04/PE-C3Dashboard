@@ -32,7 +32,9 @@ public enum FeasibilityStatus
 {
     Unknown = 0,
     Verified = 1,
-    Concern = 2
+    Concern = 2,
+    /// <summary>Sources disagree; the reviewer has not been able to settle it. Never counts as reviewed or verified.</summary>
+    Conflicting = 3
 }
 
 /// <summary>
@@ -53,6 +55,13 @@ public class FeasibilityItem
     /// <summary>What was checked and what was found (the evidence for the verdict).</summary>
     public string? Evidence { get; set; }
 
+    /// <summary>Where the evidence comes from (tax map, aerial, utility letter…). Null on records made before Phase 1.</summary>
+    public string? SourceUrl { get; set; }
+
+    /// <summary>Date of the evidence itself (when the map/photo/letter is from), not when it was entered.</summary>
+    public DateOnly? EvidenceDate { get; set; }
+
+    /// <summary>Who recorded the verdict — self-reported free text (the app has no login), not authenticated.</summary>
     public string? Reviewer { get; set; }
     public DateTimeOffset? ReviewedAtUtc { get; set; }
 

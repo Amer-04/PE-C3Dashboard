@@ -19,6 +19,7 @@ public interface IReadStore
     IQueryable<FeasibilityItem> FeasibilityItems { get; }
     IQueryable<SiteScreening> SiteScreenings { get; }
     IQueryable<SiteScreeningEntry> SiteScreeningEntries { get; }
+    IQueryable<ResearchHistoryEntry> ResearchHistory { get; }
     IQueryable<MethodologyVersion> MethodologyVersions { get; }
     IQueryable<MethodologyActivation> MethodologyActivations { get; }
     IQueryable<SiteVersionScore> SiteVersionScores { get; }

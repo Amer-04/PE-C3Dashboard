@@ -9,7 +9,7 @@ namespace NJTruckCharging.Application.Sites;
 public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodologyCache methodology, ICustomFieldStore customFields)
 {
     public Task<List<SiteMapPointDto>> GetMapPointsAsync(SiteFilter filter, CancellationToken ct = default) =>
-        store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings).Select(s => new SiteMapPointDto(
+        store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store)).Select(s => new SiteMapPointDto(
             s.Id, s.Latitude, s.Longitude, s.Score, s.Segment, s.ComputedRank,
             s.OpenAcresEst, s.FreightUse, s.InFloodZone, s.NearPowerEdisonSite)), ct);
 
@@ -17,7 +17,7 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
     {
         var pageSize = Math.Clamp(query.PageSize, 1, 500);
         var page = Math.Max(1, query.Page);
-        var q = filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings);
+        var q = filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store));
         var total = await store.CountAsync(q, ct);
         var items = await store.ToListAsync(
             Sort(q, query).Skip((page - 1) * pageSize).Take(pageSize).Select(ToListItem), ct);
@@ -71,7 +71,11 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
             ElectricalStatus = electrical?.Status ?? FeasibilityStatus.Unknown,
             ElectricalEvidence = electrical?.Evidence,
             ParkingStatus = parking?.Status ?? FeasibilityStatus.Unknown,
-            VerifiedParkingEvidence = parking is { Status: FeasibilityStatus.Verified } ? parking.Evidence : null,
+            // Only a documented Verified verdict is shown as verified parking.
+            VerifiedParkingEvidence = parking is { Status: FeasibilityStatus.Verified } && Research.ResearchQuality.IsDocumented(parking) ? parking.Evidence : null,
+            TruckEntranceEvidenceState = Research.ResearchQuality.State(entrance),
+            ElectricalEvidenceState = Research.ResearchQuality.State(electrical),
+            ParkingEvidenceState = Research.ResearchQuality.State(parking),
             VerifiedContactCount = verifiedContacts,
             TotalContactCount = totalContacts,
             Summary = ToListItemCompiled(s) with
@@ -80,7 +84,9 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
                 ScreeningDecision = screening?.Decision ?? ScreeningDecision.NotReviewed,
                 SiteEvidence = validation.SiteEvidence, ContactReadiness = validation.ContactReadiness,
                 TopContact = ResearchReadiness.TopContact(contacts),
-                BusinessListingConfirmed = BusinessConfirmed(feas)
+                BusinessListingConfirmed = BusinessConfirmed(feas),
+                ResearchReviewed = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas, contacts)).Reviewed,
+                ResearchVerified = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas, contacts)).Verified
             },
             ScreeningEvidence = screening?.Evidence,
             ScreeningUpdatedAtUtc = screening?.UpdatedAtUtc,
@@ -134,13 +140,15 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
             SiteEvidence = ResearchReadiness.Evidence(feas[i.SiteId], i.ScreeningDecision),
             ContactReadiness = ResearchReadiness.Readiness(contacts[i.SiteId]),
             TopContact = ResearchReadiness.TopContact(contacts[i.SiteId].ToList()),
-            BusinessListingConfirmed = BusinessConfirmed(feas[i.SiteId])
+            BusinessListingConfirmed = BusinessConfirmed(feas[i.SiteId]),
+            ResearchReviewed = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas[i.SiteId], contacts[i.SiteId])).Reviewed,
+            ResearchVerified = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas[i.SiteId], contacts[i.SiteId])).Verified
         }).ToList();
     }
 
     /// <summary>A reviewer verified, with evidence, that the listed business operates at the address.</summary>
     private static bool BusinessConfirmed(IEnumerable<FeasibilityItem> siteItems) =>
-        siteItems.Any(f => f.ItemKey == ResearchReadiness.BusinessKey && f.Status == FeasibilityStatus.Verified && !string.IsNullOrEmpty(f.Evidence));
+        siteItems.Any(f => f.ItemKey == ResearchReadiness.BusinessKey && f.Status == FeasibilityStatus.Verified && Research.ResearchQuality.IsDocumented(f));
 
     private static string? OwnerMailing(CandidateSite s)
     {
@@ -169,7 +177,7 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
     /// <summary>CSV of the filtered sites (ranked), for desktop review and outreach.</summary>
     public async Task<byte[]> ExportCsvAsync(SiteFilter filter, CancellationToken ct = default)
     {
-        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings)
+        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store))
             .OrderBy(s => s.Segment).ThenBy(s => s.ComputedRank), ct);
         var iosReviews = (await store.ToListAsync(store.FeasibilityItems.Where(f => f.ItemKey == IosRules.ReviewKey), ct))
             .ToDictionary(f => f.SiteId);
@@ -216,7 +224,7 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
     /// </summary>
     public async Task<byte[]> ExportResearchCsvAsync(SiteFilter filter, CancellationToken ct = default)
     {
-        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings)
+        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store))
             .OrderBy(s => s.Segment).ThenBy(s => s.ComputedRank), ct);
         var feas = (await store.ToListAsync(store.FeasibilityItems, ct)).ToLookup(f => f.SiteId);
         var contacts = (await store.ToListAsync(store.SiteContacts, ct)).ToLookup(c => c.SiteId);

@@ -959,3 +959,75 @@ td.biz-col { min-width: 150px; max-width: 220px; }
   .mm-tab { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 13px; }
   .mm-tab.on { background: var(--accent-soft); border-color: var(--accent); }
 }
+
+/* ---------- Research quality (Phase 1): evidence, history, completeness, review queue — separate from the C3 score ---------- */
+.feas-row[data-status="Conflicting"] { border-left-color: var(--warning); }
+.feas-row[data-evidence="InsufficientEvidence"] { border-left-style: dashed; }
+.core-tag { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; }
+.ev-flag { font-size: 12px; color: #8a5a00; background: #fff3d6; border-radius: 6px; padding: 5px 8px; }
+:root[data-theme="dark"] .ev-flag { background: #3a2c10; color: #f0c060; }
+.fr-src { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 6px; }
+.fr-src input, .fr-note, .rb-field input { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; }
+.fr-actions { display: inline-flex; gap: 2px; flex: none; }
+.fr-foot .muted a { color: var(--accent); }
+.fr-history { list-style: none; margin: 0; padding: 6px 0 0; border-top: 1px dashed var(--border); display: grid; gap: 8px; font-size: 12px; }
+.fr-history li { display: grid; gap: 2px; padding-left: 9px; border-left: 2px solid var(--border); overflow-wrap: anywhere; }
+.fr-history li[data-action="Corrected"] { border-left-color: var(--warning); }
+.fr-hnote { color: var(--text-2); font-style: italic; }
+.rb-field { display: grid; gap: 4px; margin: 0 0 10px; max-width: 360px; }
+.rc-box { border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 10px; display: grid; gap: 7px; background: var(--surface-2); }
+.rc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.rc-counts { display: inline-flex; gap: 12px; color: var(--text-2); font-size: 12px; }
+.rc-counts b { color: var(--text); }
+.rc-bar { display: flex; height: 7px; border-radius: 4px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); }
+.rc-bar i { display: block; height: 100%; }
+.rc-bar i.v, .sp-bar i.rv, .rr-legend i.rv { background: var(--good); }
+.rc-bar i.c, .sp-bar i.rc, .rr-legend i.rc { background: var(--warning); }
+.rc-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-2); }
+.rc-checks li { display: inline-flex; align-items: center; gap: 5px; }
+.rc-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text-3); flex: none; }
+.rc-checks li[data-state="Verified"] .rc-dot { background: var(--good); border-color: var(--good); }
+.rc-checks li[data-state="Concern"] .rc-dot { background: var(--warning); border-color: var(--warning); }
+.rc-checks li[data-state="Conflicting"] .rc-dot { border-color: var(--critical); background: var(--critical-soft); }
+.rc-checks li[data-state="InsufficientEvidence"] .rc-dot { border-style: dashed; border-color: var(--warning); }
+.rc-issues { color: var(--critical); }
+.rc-start { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rc-cell { white-space: nowrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.view-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.view-tabs a { padding: 7px 14px; font-size: 13px; font-weight: 600; color: var(--text-2); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.view-tabs a:hover { color: var(--text); }
+.view-tabs a.on { color: var(--accent); border-bottom-color: var(--accent); }
+.rr-top { margin-bottom: 12px; }
+.rr-scope { margin-top: 4px; }
+.rr-seg .sp-foot { font-size: 11px; }
+.rr-legend { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.rr-legend i { display: inline-block; width: 10px; height: 6px; border-radius: 2px; margin-left: 6px; }
+.rr-legend i.rn { background: var(--surface-2); border: 1px solid var(--border); }
+.rr-issues { margin-top: 12px; }
+.rr-issues .chip b { margin-left: 3px; }
+.rr-table td { vertical-align: middle; }
+.rr-table tr.on > td { background: var(--accent-soft); }
+.rc-mini { display: grid; gap: 3px; font-size: 12px; color: var(--text-2); min-width: 150px; }
+.rr-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.rr-badge { font-size: 11.5px; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); white-space: nowrap; }
+.rr-badge[data-i="ParcelMismatch"], .rr-badge[data-i="BusinessConflict"], .rr-badge[data-i="ConflictingEvidence"] { background: var(--critical-soft); color: var(--critical); border-color: transparent; }
+.rr-badge[data-i="InsufficientEvidence"], .rr-badge[data-i="UnverifiedContact"] { background: #fff3d6; color: #8a5a00; border-color: transparent; }
+:root[data-theme="dark"] .rr-badge[data-i="InsufficientEvidence"], :root[data-theme="dark"] .rr-badge[data-i="UnverifiedContact"] { background: #3a2c10; color: #f0c060; }
+.rr-detail > td { background: var(--bg); }
+.rr-panels { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .rr-panels { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .fr-src { grid-template-columns: 1fr; } .rr-table .num:nth-child(2) { display: none; } }
+.rr-badge[data-i="Resolved"] { background: #e3f4e3; color: var(--good-text); border-color: transparent; }
+:root[data-theme="dark"] .rr-badge[data-i="Resolved"] { background: #16301a; }
+/* Evidence validation (Phase 1): undocumented "verified" records and conflicts are never styled as verified */
+.rr-badge[data-ev="InsufficientEvidence"] { background: #fff3d6; color: #8a5a00; border: 1px dashed var(--warning); }
+:root[data-theme="dark"] .rr-badge[data-ev="InsufficientEvidence"] { background: #3a2c10; color: #f0c060; }
+.ev-badge[data-v="Insufficient"] { background: #fff3d6; color: #8a5a00; border: 1px dashed var(--warning); }
+.ev-badge[data-v="Conflicting"] { background: var(--critical-soft); color: var(--critical); }
+:root[data-theme="dark"] .ev-badge[data-v="Insufficient"] { background: #3a2c10; color: #f0c060; }
+.val-sec[data-st="InsufficientEvidence"] { border-color: var(--warning); border-style: dashed; }
+.val-st[data-st="InsufficientEvidence"] { border: 1px dashed var(--warning); color: var(--warning); }
+.suit-basis[data-b="InsufficientEvidence"] { border: 1px dashed var(--warning); color: var(--warning); }
+.suit-basis[data-b="Conflicting"] { border: 1px solid var(--critical); color: var(--critical); }

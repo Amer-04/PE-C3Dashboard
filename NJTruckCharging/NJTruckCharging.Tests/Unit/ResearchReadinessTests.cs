@@ -7,7 +7,7 @@ namespace NJTruckCharging.Tests.Unit;
 public class ResearchReadinessTests
 {
     private static FeasibilityItem F(FeasibilityItemKey k, FeasibilityStatus s, string? ev = "checked") =>
-        new() { SiteId = "S1", ItemKey = k, Status = s, Evidence = ev };
+        new() { SiteId = "S1", ItemKey = k, Status = s, Evidence = ev, SourceUrl = "https://example.org/evidence", EvidenceDate = new DateOnly(2026, 10, 1) };
 
     private static SiteContact C(ContactType t, ContactVerificationStatus vs, string? src = "https://src.example") =>
         new() { SiteId = "S1", Name = "N", ContactType = t, VerificationStatus = vs, SourceUrl = src };
@@ -22,7 +22,8 @@ public class ResearchReadinessTests
         Assert.Equal(SiteEvidence.Preliminary, ResearchReadiness.Evidence([F(FeasibilityItemKey.ElectricalService, FeasibilityStatus.Verified)], ScreeningDecision.NotReviewed));
         Assert.Equal(SiteEvidence.Verified, ResearchReadiness.Evidence([F(FeasibilityItemKey.ParcelIdentity, FeasibilityStatus.Verified)], ScreeningDecision.NotReviewed));
         // A parcel "verified" with no evidence text is not treated as verified.
-        Assert.Equal(SiteEvidence.Preliminary, ResearchReadiness.Evidence([F(FeasibilityItemKey.ParcelIdentity, FeasibilityStatus.Verified, null)], ScreeningDecision.NotReviewed));
+        // Parcel recorded as Verified without evidence text: kept, but labelled Insufficient evidence — never Verified.
+        Assert.Equal(SiteEvidence.InsufficientEvidence, ResearchReadiness.Evidence([F(FeasibilityItemKey.ParcelIdentity, FeasibilityStatus.Verified, null)], ScreeningDecision.NotReviewed));
         // A mismatch outranks a verified parcel.
         Assert.Equal(SiteEvidence.Mismatch, ResearchReadiness.Evidence(
             [F(FeasibilityItemKey.ParcelIdentity, FeasibilityStatus.Verified), F(FeasibilityItemKey.BusinessAtAddress, FeasibilityStatus.Concern)],

@@ -39,7 +39,8 @@ public class FeasibilityController(FeasibilityService feasibility) : ControllerB
         return outcome switch
         {
             FeasibilityService.UpsertOutcome.CandidateNotFound => NotFound($"No candidate with SiteId '{req.SiteId}'."),
-            FeasibilityService.UpsertOutcome.EvidenceRequired => BadRequest("Evidence is required for this verdict (what was checked and where — e.g. the tax-map or source link)."),
+            FeasibilityService.UpsertOutcome.EvidenceRequired => BadRequest("Evidence is required for this verdict (what was checked and where — e.g. the tax-map or source link). A Conflicting verdict must describe what disagrees."),
+            FeasibilityService.UpsertOutcome.InvalidEvidenceDate => BadRequest("The evidence date must be a real date that is not in the future."),
             _ => Ok(dto)
         };
     }

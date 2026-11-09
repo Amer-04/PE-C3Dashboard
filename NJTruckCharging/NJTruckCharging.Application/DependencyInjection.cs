@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<Feasibility.FeasibilityService>();
         services.AddScoped<Comparison.SiteComparisonService>();
         services.AddScoped<Screening.ScreeningService>();
+        services.AddScoped<Research.ResearchService>();
         services.AddScoped<Methodology.MethodologyService>();
         services.AddScoped<Methodology.CustomFieldService>();
         services.AddSingleton<Methodology.ActiveMethodologyCache>();

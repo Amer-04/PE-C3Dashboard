@@ -26,6 +26,7 @@ export interface SiteFilter {
   screeningDecisions: string[];         // promising | research | unsuitable | notreviewed
   evidenceStates: string[];             // verified | preliminary | mismatch | unknown (research records only)
   contactStates: string[];              // relevant | general | lead | none (researched contacts only)
+  researchStages: string[];             // any | none | partial | complete (research completeness; never part of the score)
 }
 
 /** Only 'Confirmed' is manually verified; the rest are inferred from source data. */
@@ -39,7 +40,7 @@ export const IOS_LABELS: Record<IosClassification, string> = {
   NotIos: 'Not IOS',
   Unknown: 'Unknown',
 };
-export type FeasibilityVerdict = 'Verified' | 'Concern' | 'Unknown';
+export type FeasibilityVerdict = 'Verified' | 'Concern' | 'Conflicting' | 'Unknown';
 
 export const DEFAULT_FILTER: SiteFilter = {
   segments: [],
@@ -68,16 +69,18 @@ export const DEFAULT_FILTER: SiteFilter = {
   screeningDecisions: [],
   evidenceStates: [],
   contactStates: [],
+  researchStages: [],
 };
 
 // ---- Research readiness (derived from research records only — never from the C3 score) ----
-export type SiteEvidence = 'Verified' | 'Preliminary' | 'Mismatch' | 'Unknown';
+export type SiteEvidence = 'Verified' | 'InsufficientEvidence' | 'Preliminary' | 'Mismatch' | 'Unknown';
 export type ContactReadiness = 'RelevantContactVerified' | 'GeneralBusinessContact' | 'UnverifiedLead' | 'NoContact';
 
 export const SITE_EVIDENCE: { value: SiteEvidence; token: string; label: string; hint: string }[] = [
-  { value: 'Verified', token: 'verified', label: 'Verified', hint: 'A reviewer checked the official parcel against the county tax map, with evidence' },
+  { value: 'Verified', token: 'verified', label: 'Verified', hint: 'A reviewer checked the official parcel against the county tax map, with evidence text, a source URL and an evidence date' },
+  { value: 'InsufficientEvidence', token: 'insufficient', label: 'Insufficient evidence', hint: 'The parcel is recorded as verified but lacks evidence text, a source URL or an evidence date — not counted as verified' },
   { value: 'Preliminary', token: 'preliminary', label: 'Preliminary', hint: 'Some research recorded (screening or feasibility checks), parcel not verified yet' },
-  { value: 'Mismatch', token: 'mismatch', label: 'Mismatch', hint: 'A reviewer recorded a parcel or business-at-address discrepancy' },
+  { value: 'Mismatch', token: 'mismatch', label: 'Mismatch', hint: 'A reviewer recorded a parcel or business-at-address discrepancy or conflicting evidence' },
   { value: 'Unknown', token: 'unknown', label: 'Unknown', hint: 'No research recorded yet (a high C3 score does not verify anything)' },
 ];
 export const CONTACT_READINESS: { value: ContactReadiness; token: string; label: string; short: string; hint: string }[] = [
@@ -89,7 +92,7 @@ export const CONTACT_READINESS: { value: ContactReadiness; token: string; label:
   { value: 'NoContact', token: 'none', label: 'No Contact', short: 'No contact', hint: 'No researched contact on record' },
 ];
 
-export type ValidationStatus = 'Unknown' | 'Unconfirmed' | 'Verified' | 'Mismatch';
+export type ValidationStatus = 'Unknown' | 'Unconfirmed' | 'Verified' | 'Mismatch' | 'InsufficientEvidence';
 export interface ValidationSection {
   key: 'Parcel' | 'Business' | 'Owner' | 'Suitability'; title: string;
   status: ValidationStatus; statusLabel: string;
@@ -134,6 +137,9 @@ export interface SiteListItem {
   businessListingConfirmed?: boolean;
   /** Website listed with the parcel's business listing in the C3 data (same value Site Details shows). */
   businessWebsite?: string | null;
+  /** Research completeness (independent of the score): core checks reviewed / successfully verified, out of 8. */
+  researchReviewed?: number;
+  researchVerified?: number;
 }
 
 /** Most relevant researched contact for a site. `verified` = Verified status with a cited source. */
@@ -176,6 +182,8 @@ export interface SiteDetail {
   truckEntranceStatus: FeasibilityVerdict; truckEntranceEvidence: string | null;
   electricalStatus: FeasibilityVerdict; electricalEvidence: string | null;
   parkingStatus: FeasibilityVerdict; verifiedParkingEvidence: string | null;
+  /** Evidence state of the three verdicts above; an undocumented Verified is 'InsufficientEvidence'. */
+  truckEntranceEvidenceState?: CheckState; electricalEvidenceState?: CheckState; parkingEvidenceState?: CheckState;
   verifiedContactCount: number; totalContactCount: number;
   screeningEvidence: string | null; screeningUpdatedAtUtc: string | null;
   suitability: SiteSuitability | null;
@@ -247,11 +255,14 @@ export interface CreateContactRequest {
   siteId: string; name: string; organization?: string | null; jobTitle?: string | null;
   contactType: ContactType; businessPhone?: string | null; email?: string | null; sourceUrl?: string | null;
   verificationStatus?: ContactVerificationStatus | null; researchNotes?: string | null;
+  /** Self-reported name (free text, not authenticated). */
+  recordedBy?: string | null;
 }
 export interface UpdateContactRequest {
   name: string; organization: string | null; jobTitle: string | null; contactType: ContactType;
   businessPhone: string | null; email: string | null; sourceUrl: string | null;
   verificationStatus: ContactVerificationStatus; researchNotes: string | null;
+  recordedBy?: string | null; correctionNote?: string | null;
 }
 
 // ---- Feasibility checklist ----
@@ -260,7 +271,7 @@ export type FeasibilityItemKey =
   'EligibleHighwayAccess' | 'ElectricalService' | 'FloodEnvironmental' | 'Zoning' |
   'OwnershipLeaseAvailability' | 'PropertyOwnerInterest' | 'OutdoorStorageUse' | 'ParcelIdentity' | 'BusinessAtAddress';
 
-export type FeasibilityStatus = 'Unknown' | 'Verified' | 'Concern';
+export type FeasibilityStatus = 'Unknown' | 'Verified' | 'Concern' | 'Conflicting';
 
 export const FEASIBILITY_ITEMS: { key: FeasibilityItemKey; label: string }[] = [
   { key: 'ParcelIdentity', label: 'Official parcel identification — block/lot & boundary checked on the county tax map' },
@@ -280,7 +291,12 @@ export const FEASIBILITY_ITEMS: { key: FeasibilityItemKey; label: string }[] = [
 
 export interface FeasibilityItem {
   itemKey: FeasibilityItemKey; status: FeasibilityStatus; evidence: string | null;
+  /** Self-reported "Recorded by" (not authenticated). */
   reviewer: string | null; reviewedAtUtc: string | null; updatedAtUtc: string | null;
+  sourceUrl?: string | null;
+  /** Date of the evidence itself (yyyy-MM-dd). */
+  evidenceDate?: string | null;
+  evidenceState?: CheckState;
 }
 export interface FeasibilitySummary {
   siteId: string; total: number; verified: number; concern: number; unknown: number;
@@ -288,7 +304,77 @@ export interface FeasibilitySummary {
 }
 export interface UpsertFeasibilityRequest {
   siteId: string; itemKey: FeasibilityItemKey; status: FeasibilityStatus; evidence: string | null;
+  sourceUrl?: string | null; evidenceDate?: string | null; correctionNote?: string | null; recordedBy?: string | null;
 }
+
+// ---- Research quality (Phase 1) — independent of the C3 score; not a CRM ----
+export type CheckState = 'NotStarted' | 'InsufficientEvidence' | 'Conflicting' | 'Concern' | 'Verified';
+export type ResearchCheck = 'ParcelIdentity' | 'BusinessAtAddress' | 'TruckEntrance' | 'TurningSpace' |
+  'ParkingCapacity' | 'ElectricalService' | 'Zoning' | 'VerifiedContact';
+export type ResearchStage = 'NoneReviewed' | 'PartlyReviewed' | 'AllReviewed';
+export type ReviewIssue = 'ParcelMismatch' | 'BusinessConflict' | 'ConflictingEvidence' | 'UnverifiedContact' |
+  'TruckAccessUnchecked' | 'ElectricalUnknown' | 'InsufficientEvidence';
+
+/** Feasibility items that are among the eight core checks (the eighth is a verified, sourced contact). */
+export const CORE_CHECK_ITEMS: FeasibilityItemKey[] = [
+  'ParcelIdentity', 'BusinessAtAddress', 'TruckEntranceAccess', 'TurningManeuveringSpace',
+  'TruckParkingCapacity', 'ElectricalService', 'Zoning',
+];
+
+export const REVIEW_ISSUES: { value: ReviewIssue; label: string; hint: string }[] = [
+  { value: 'ParcelMismatch', label: 'Parcel mismatch', hint: 'Parcel identity recorded as Concern or Conflicting' },
+  { value: 'BusinessConflict', label: 'Conflicting business info', hint: 'Business at address recorded as Concern or Conflicting' },
+  { value: 'ConflictingEvidence', label: 'Conflicting evidence', hint: 'Another check has sources that disagree' },
+  { value: 'UnverifiedContact', label: 'Unverified contact', hint: 'Contacts on record, none verified with a source' },
+  { value: 'TruckAccessUnchecked', label: 'Truck access not checked', hint: 'Truck entrance & access is still Unknown' },
+  { value: 'ElectricalUnknown', label: 'Electrical unknown', hint: 'Electrical service is still Unknown' },
+  { value: 'InsufficientEvidence', label: 'Insufficient evidence', hint: 'A verdict lacks evidence text, a source URL or an evidence date' },
+];
+
+/** Research-completeness filter tokens (research-set sites only; independent of the C3 score). */
+export const RESEARCH_STAGES: { token: string; label: string; hint: string }[] = [
+  { token: 'any', label: 'In research', hint: 'Saved, screened, started or previously researched sites' },
+  { token: 'none', label: '0 of 8 reviewed', hint: 'In research, no core check reviewed with documented evidence yet' },
+  { token: 'partial', label: 'Partly reviewed', hint: '1–7 of the 8 core checks reviewed' },
+  { token: 'complete', label: 'All 8 reviewed', hint: 'Every core check has a documented verdict (concerns included)' },
+];
+
+/** Display label for a Site Evidence value. */
+export function siteEvidenceLabel(e: SiteEvidence): string { return SITE_EVIDENCE.find(x => x.value === e)?.label ?? e; }
+
+export const CHECK_STATE_LABELS: Record<CheckState, string> = {
+  NotStarted: 'Not started', InsufficientEvidence: 'Insufficient evidence', Conflicting: 'Conflicting',
+  Concern: 'Reviewed — concern', Verified: 'Verified',
+};
+
+export interface ResearchHistoryEntry {
+  id: number; siteId: string; subject: 'Site' | 'Feasibility' | 'Contact';
+  action: 'Started' | 'Recorded' | 'Corrected' | 'ContactAdded' | 'ContactUpdated' | 'ContactRemoved';
+  itemKey: FeasibilityItemKey | null; contactId: number | null;
+  previousStatus: string | null; status: string | null; evidence: string | null; sourceUrl: string | null;
+  evidenceDate: string | null; note: string | null; recordedBy: string | null; recordedAtUtc: string;
+}
+export interface ResearchCheckState {
+  check: ResearchCheck; label: string; state: CheckState; itemKey: FeasibilityItemKey | null; reviewed: boolean; verified: boolean;
+}
+export interface ReviewIssueItem { issue: ReviewIssue; label: string; }
+export interface SiteResearch {
+  siteId: string; inResearchSet: boolean; reviewed: number; verified: number; total: number; stage: ResearchStage;
+  checks: ResearchCheckState[]; issues: ReviewIssueItem[]; screenedUnsuitable: boolean;
+}
+export interface ReviewQueueItem {
+  id: number; siteId: string; segment: number; rank: number; address: string; municipality: string; county: string;
+  reviewed: number; verified: number; total: number; issues: ReviewIssueItem[];
+}
+export interface ReviewQueue {
+  researchSites: number; sitesWithIssues: number; excludedUnsuitable: number;
+  issueCounts: Record<ReviewIssue, number>; items: ReviewQueueItem[];
+}
+export interface SegmentResearch {
+  segment: number; researchSites: number; noneReviewed: number; partlyReviewed: number; allReviewed: number;
+  checksReviewed: number; checksVerified: number; checksTotal: number; sitesWithIssues: number;
+}
+export interface ResearchSummary extends Omit<SegmentResearch, 'segment'> { segments: SegmentResearch[]; }
 
 // ---- Saved sites (bookmarks) ----
 export interface SavedSite {
@@ -379,7 +465,7 @@ export interface ScreeningSummary extends ScreeningCounts { topN: number | null;
 
 // ---- Site Details "at a glance" (informational; never scores or decides) ----
 export type SuitabilityAnswer = 'Yes' | 'NeedsCheck' | 'No' | 'Unknown';
-export type SuitabilityBasis = 'Verified' | 'Estimate' | 'SourceData' | 'Unverified' | 'Missing';
+export type SuitabilityBasis = 'Verified' | 'Estimate' | 'SourceData' | 'Unverified' | 'Missing' | 'InsufficientEvidence' | 'Conflicting';
 export interface SuitabilityItem {
   key: string; question: string; answer: SuitabilityAnswer; basis: SuitabilityBasis;
   headline: string; detail: string; nextStep: string | null;

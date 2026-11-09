@@ -5,7 +5,7 @@ import {
   MethodologyNote, PagedResult, PowerEdisonSite, SavedSite, SavedSiteRef, SaveSiteRequest, SiteContact,
   SiteContactSummary, SiteDetail, SiteFilter, SiteListItem, SiteMapPoint, SiteSort, UpdateContactRequest,
   UpdateSavedSiteRequest, UpsertFeasibilityRequest, SiteComparison, SiteScreening, ScreeningSummary,
-  UpsertScreeningRequest,
+  UpsertScreeningRequest, ResearchHistoryEntry, SiteResearch, ReviewQueue, ResearchSummary,
 } from './models';
 import {
   Activation, ActiveMethodology, ComparisonPage, MethodologyRules, PreviewSummary, PublishResult, ScoringFieldInfo,
@@ -111,6 +111,24 @@ export class ApiService {
   feasibility(siteId: string) { return this.http.get<FeasibilityItem[]>(`${this.base}/feasibility`, { params: { siteId } }); }
   feasibilitySummary(siteId: string) { return this.http.get<FeasibilitySummary>(`${this.base}/feasibility/summary`, { params: { siteId } }); }
   upsertFeasibility(req: UpsertFeasibilityRequest) { return this.http.put<FeasibilityItem>(`${this.base}/feasibility`, req); }
+
+  // ---- Research quality (Phase 1; independent of the C3 score) ----
+  researchHistory(siteId: string) { return this.http.get<ResearchHistoryEntry[]>(`${this.base}/research/history`, { params: { siteId } }); }
+  researchSite(siteId: string) { return this.http.get<SiteResearch>(`${this.base}/research/site`, { params: { siteId } }); }
+  startResearch(siteId: string, recordedBy: string | null, note: string | null = null) {
+    return this.http.post<SiteResearch>(`${this.base}/research/start`, { siteId, recordedBy, note });
+  }
+  reviewQueue(segments: number[], issues: string[]) {
+    let p = new HttpParams();
+    segments.forEach(s => (p = p.append('segments', s)));
+    issues.forEach(i => (p = p.append('issues', i)));
+    return this.http.get<ReviewQueue>(`${this.base}/research/queue`, { params: p });
+  }
+  researchSummary(segments: number[] = []) {
+    let p = new HttpParams();
+    segments.forEach(s => (p = p.append('segments', s)));
+    return this.http.get<ResearchSummary>(`${this.base}/research/summary`, { params: p });
+  }
 
   // ---- Site screening ----
   screening(siteId: string) { return this.http.get<SiteScreening>(`${this.base}/screening`, { params: { siteId } }); }

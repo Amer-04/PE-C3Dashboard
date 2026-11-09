@@ -11,7 +11,7 @@ public sealed class DashboardService(IReadStore store, TimeProvider clock)
     public async Task<DashboardSummaryDto> GetSummaryAsync(SiteFilter filter, CancellationToken ct = default)
     {
         var total = await store.CountAsync(store.Sites, ct);
-        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings).Select(s => new
+        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store)).Select(s => new
         {
             s.Id, s.Segment, s.Score, s.OpenAcresEst, s.FreightUse, s.InFloodZone, s.IsContaminated,
             s.NearPowerEdisonSite, s.InHighlandsPreservation, s.MilesToExit, s.PropClass, s.Utility,
