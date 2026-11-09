@@ -15,7 +15,7 @@ public partial class ApiIntegrationTests
     private static async Task SeedResearchStates(HttpClient c)
     {
         async Task Feas(string siteId, string key, string status, string evidence) =>
-            Assert.Equal(HttpStatusCode.OK, (await c.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = key, status, evidence, sourceUrl = Src, evidenceDate = "2026-10-01" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await c.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = key, status, evidence, sourceUrl = Src, evidenceDate = "2026-10-01", recordedBy = "Tester" })).StatusCode);
         async Task Contact(string siteId, string name, string type, string vs, string? src) =>
             Assert.Equal(HttpStatusCode.Created, (await c.PostAsJsonAsync("/api/contacts", new
             {
@@ -389,7 +389,7 @@ public partial class ApiIntegrationTests
             Assert.Equal("8008748925", r[Array.IndexOf(csv[0], "business_phone_listed_in_source")]);
 
             // A reviewer's evidence-backed business-at-address check marks the listing as confirmed (phone stays unverified).
-            await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0009", itemKey = "BusinessAtAddress", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", evidence = "Signage matches (Street View 2026-10)" });
+            await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0009", itemKey = "BusinessAtAddress", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "Signage matches (Street View 2026-10)" });
             var after = (await Json(await client.GetAsync("/api/sites?search=TEST-0009&page=1&pageSize=5"))).GetProperty("items")
                 .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == "TEST-0009");
             Assert.True(after.GetProperty("businessListingConfirmed").GetBoolean());

@@ -26,7 +26,7 @@ public class SiteSuitabilityTests
         r.ToDictionary(x => x.Key, x => new FeasibilityItem
         {
             SiteId = "S1", ItemKey = x.Key, Status = x.Status, Evidence = x.Evidence,
-            SourceUrl = "https://example.org/evidence", EvidenceDate = new DateOnly(2026, 10, 1)
+            SourceUrl = "https://example.org/evidence", EvidenceDate = new DateOnly(2026, 10, 1), Reviewer = "Tester"
         });
 
     private static SuitabilityItemDto Item(SiteSuitabilityDto d, string key) => d.Items.Single(i => i.Key == key);

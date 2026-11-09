@@ -10,7 +10,8 @@ public class ResearchQualityTests
     private static FeasibilityItem F(FeasibilityItemKey key, FeasibilityStatus status, bool documented = true, string? evidence = "seen") => new()
     {
         SiteId = "S", ItemKey = key, Status = status, Evidence = evidence,
-        SourceUrl = documented ? "https://example.org/src" : null, EvidenceDate = documented ? D : null
+        SourceUrl = documented ? "https://example.org/src" : null, EvidenceDate = documented ? D : null,
+        Reviewer = documented ? "Tester" : null
     };
 
     private static SiteContact C(ContactVerificationStatus status, bool sourced = true, ContactType type = ContactType.PropertyOwner) =>
@@ -126,10 +127,11 @@ public class ResearchQualityTests
 
     // ---- Site Evidence and Site Details follow the same documented-evidence rule ----
 
-    private static FeasibilityItem Parcel(FeasibilityStatus status, string? evidence = "Tax map matches", string? source = "https://example.org/map", DateOnly? date = null, bool noDate = false) => new()
+    private static FeasibilityItem Parcel(FeasibilityStatus status, string? evidence = "Tax map matches", string? source = "https://example.org/map",
+        DateOnly? date = null, bool noDate = false, string? reviewer = "Tester") => new()
     {
         SiteId = "S", ItemKey = FeasibilityItemKey.ParcelIdentity, Status = status, Evidence = evidence,
-        SourceUrl = source, EvidenceDate = noDate ? null : date ?? D
+        SourceUrl = source, EvidenceDate = noDate ? null : date ?? D, Reviewer = reviewer
     };
 
     private static NJTruckCharging.Application.Sites.SiteEvidence Ev(FeasibilityItem f) =>
@@ -159,11 +161,34 @@ public class ResearchQualityTests
     }
 
     [Fact]
+    public void Missing_recorded_by_name_is_insufficient_evidence_not_verified()
+    {
+        foreach (var name in new string?[] { null, "" })
+        {
+            var f = Parcel(FeasibilityStatus.Verified, reviewer: name);
+            Assert.False(ResearchQuality.IsDocumented(f));
+            Assert.Equal(NJTruckCharging.Application.Sites.SiteEvidence.InsufficientEvidence, Ev(f));
+            Assert.Equal(CheckState.InsufficientEvidence, ResearchQuality.State(f));
+            Assert.Equal(NJTruckCharging.Application.Sites.SuitabilityBasis.InsufficientEvidence, Identity(f).Basis);
+            Assert.Equal("a Recorded-by name", ResearchQuality.MissingText(f));
+        }
+    }
+
+    [Fact]
+    public void Concern_without_recorded_by_name_is_not_counted_as_reviewed()
+    {
+        var f = Parcel(FeasibilityStatus.Concern, reviewer: null);
+        Assert.Equal(CheckState.InsufficientEvidence, ResearchQuality.State(f));
+        Assert.Equal(NJTruckCharging.Application.Sites.SiteEvidence.Mismatch, Ev(f));   // a discrepancy is never hidden
+        Assert.Equal((0, 0), ResearchQuality.Counts(ResearchQuality.States([f], [])));
+    }
+
+    [Fact]
     public void Legacy_record_without_source_or_date_is_insufficient_evidence()
     {
-        var f = Parcel(FeasibilityStatus.Verified, source: null, noDate: true);
+        var f = Parcel(FeasibilityStatus.Verified, source: null, noDate: true, reviewer: null);
         Assert.Equal(NJTruckCharging.Application.Sites.SiteEvidence.InsufficientEvidence, Ev(f));
-        Assert.Equal("a source URL and an evidence date", ResearchQuality.MissingText(f));
+        Assert.Equal("a source URL, an evidence date and a Recorded-by name", ResearchQuality.MissingText(f));
         Assert.Equal(FeasibilityStatus.Verified, f.Status);   // the record itself is untouched
         Assert.Contains(ReviewIssue.InsufficientEvidence, ResearchQuality.Issues([f], []));
     }

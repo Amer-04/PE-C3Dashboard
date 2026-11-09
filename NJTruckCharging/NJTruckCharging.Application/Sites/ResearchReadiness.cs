@@ -171,10 +171,10 @@ public static class ResearchReadiness
             (wM && feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))) ||
             (wV && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))
                 && feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified
-                                 && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null)) ||
+                                 && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != "")) ||
             (wI && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))
                 && !feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified
-                                  && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null)
+                                  && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != "")
                 && feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified)) ||
             (wP && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))
                 && !feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified)

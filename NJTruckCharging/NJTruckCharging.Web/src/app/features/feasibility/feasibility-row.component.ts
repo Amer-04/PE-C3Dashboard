@@ -14,16 +14,19 @@ export function todayIso(): string {
 
 /**
  * What still stops a verdict from being saved as documented evidence, or null when it can be saved.
- * Verified and Concern need evidence text, a source URL and an evidence date; Conflicting must say what disagrees;
- * replacing an earlier verdict needs a correction note.
+ * Verified and Concern need evidence text, a source URL, an evidence date and a "Recorded by" name (self-reported,
+ * not authenticated) — the same standard the server uses to count a verdict as reviewed / verified;
+ * Conflicting must say what disagrees; replacing an earlier verdict needs a correction note.
  */
 export function verdictProblem(v: {
   status: FeasibilityStatus; evidence: string; sourceUrl: string; evidenceDate: string; isCorrection: boolean; note: string;
+  recordedBy: string;
 }): string | null {
   if (v.status === 'Verified' || v.status === 'Concern') {
     if (!v.evidence.trim()) return 'Describe the evidence (what was checked and found).';
     if (!/^https?:\/\/\S+\.\S+/i.test(v.sourceUrl.trim())) return 'Add the source URL (http or https).';
     if (!v.evidenceDate) return 'Add the date of the evidence.';
+    if (!v.recordedBy.trim()) return 'Enter your name under "Recorded by" (self-reported, not authenticated).';
   }
   if (v.status === 'Conflicting' && !v.evidence.trim()) return 'Describe which sources disagree.';
   if (v.evidenceDate && v.evidenceDate > todayIso()) return 'The evidence date cannot be in the future.';
@@ -69,7 +72,7 @@ export function verdictProblem(v: {
       <div class="fr-foot">
         <span class="muted small">
           @if (item().reviewedAtUtc) {
-            Recorded {{ item().reviewedAtUtc | date: 'MMM d' }}@if (item().reviewer) { · {{ item().reviewer }} <i>(self-reported)</i> }
+            Recorded {{ item().reviewedAtUtc | date: 'MMM d' }}@if (item().reviewer) { · {{ item().reviewer }} <i title="Typed by the researcher; the app has no login">(self-reported, not authenticated)</i> }
             @if (item().evidenceDate) { · evidence {{ item().evidenceDate }} }
             @if (srcLink(); as l) { · <a [href]="l" target="_blank" rel="noopener noreferrer">source ↗</a> }
           } @else { Not reviewed }
@@ -86,7 +89,7 @@ export function verdictProblem(v: {
           @for (h of history(); track h.id) {
             <li [attr.data-action]="h.action">
               <div><b>{{ h.action === 'Corrected' ? 'Corrected' : 'Recorded' }}</b> {{ h.previousStatus }} → {{ h.status }}
-                <span class="muted">· {{ h.recordedAtUtc | date: 'MMM d, y, h:mm a' }}@if (h.recordedBy) { · {{ h.recordedBy }} (self-reported) }</span></div>
+                <span class="muted">· {{ h.recordedAtUtc | date: 'MMM d, y, h:mm a' }}@if (h.recordedBy) { · {{ h.recordedBy }} (self-reported, not authenticated) }</span></div>
               @if (h.evidence) { <div>{{ h.evidence }}</div> }
               <div class="muted">
                 @if (h.evidenceDate) { Evidence {{ h.evidenceDate }} }
@@ -126,7 +129,8 @@ export class FeasibilityRowComponent {
   protected readonly srcLink = computed(() => websiteLink(this.item().sourceUrl)?.href ?? null);
   protected readonly missing = computed(() => {
     const i = this.item();
-    const parts = [!i.evidence && 'evidence text', !i.sourceUrl && 'source URL', !i.evidenceDate && 'evidence date'].filter(Boolean);
+    const parts = [!i.evidence && 'evidence text', !i.sourceUrl && 'source URL', !i.evidenceDate && 'evidence date',
+      !i.reviewer && 'Recorded-by name'].filter(Boolean);
     return parts.join(', ').replace(/, ([^,]*)$/, ' or $1');
   });
 
@@ -139,7 +143,7 @@ export class FeasibilityRowComponent {
 
   protected readonly problem = computed(() => verdictProblem({
     status: this.status(), evidence: this.evidence(), sourceUrl: this.sourceUrl(), evidenceDate: this.evidenceDate(),
-    isCorrection: this.isCorrection(), note: this.note(),
+    isCorrection: this.isCorrection(), note: this.note(), recordedBy: this.recordedBy.name(),
   }));
 
   protected toggleHistory() {

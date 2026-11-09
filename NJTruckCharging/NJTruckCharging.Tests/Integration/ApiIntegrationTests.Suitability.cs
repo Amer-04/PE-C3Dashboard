@@ -26,8 +26,8 @@ public partial class ApiIntegrationTests
         Assert.True(s.GetProperty("remainingToVerify").GetArrayLength() >= 5);
 
         // Team research arrives.
-        await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "TruckParkingCapacity", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", evidence = "32 tractor-trailer stalls striped in the rear yard" });
-        await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "TruckEntranceAccess", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", evidence = "Two 40-ft curb cuts" });
+        await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "TruckParkingCapacity", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "32 tractor-trailer stalls striped in the rear yard" });
+        await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "TruckEntranceAccess", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "Two 40-ft curb cuts" });
         await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "ElectricalService", status = "Concern", evidence = "Utility: 18-month upgrade" });
         await client.PostAsJsonAsync("/api/contacts", new { siteId, name = "Jo Owner", contactType = "PropertyOwner", verificationStatus = "Verified", sourceUrl = "https://example.org/jo" });
 

@@ -7,7 +7,7 @@ namespace NJTruckCharging.Tests.Unit;
 public class ResearchReadinessTests
 {
     private static FeasibilityItem F(FeasibilityItemKey k, FeasibilityStatus s, string? ev = "checked") =>
-        new() { SiteId = "S1", ItemKey = k, Status = s, Evidence = ev, SourceUrl = "https://example.org/evidence", EvidenceDate = new DateOnly(2026, 10, 1) };
+        new() { SiteId = "S1", ItemKey = k, Status = s, Evidence = ev, SourceUrl = "https://example.org/evidence", EvidenceDate = new DateOnly(2026, 10, 1), Reviewer = "Tester" };
 
     private static SiteContact C(ContactType t, ContactVerificationStatus vs, string? src = "https://src.example") =>
         new() { SiteId = "S1", Name = "N", ContactType = t, VerificationStatus = vs, SourceUrl = src };

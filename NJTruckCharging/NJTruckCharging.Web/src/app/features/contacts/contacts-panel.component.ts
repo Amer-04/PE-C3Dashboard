@@ -79,7 +79,7 @@ import {
             @if (c.email) { <dt>Email</dt><dd><a [href]="'mailto:' + c.email">{{ c.email }}</a></dd> }
             @if (c.sourceUrl) { <dt>Source</dt><dd><a [href]="c.sourceUrl" target="_blank" rel="noopener">evidence ↗</a></dd> }
             @if (!c.sourceUrl) { <dt>Source</dt><dd class="muted">none recorded</dd> }
-            @if (c.verificationStatus === 'Verified' && c.lastVerifiedUtc) { <dt>Verified</dt><dd>{{ c.lastVerifiedUtc | date: 'MMM d, y' }}@if (c.verifiedBy) { by {{ c.verifiedBy }} }</dd> }
+            @if (c.verificationStatus === 'Verified' && c.lastVerifiedUtc) { <dt>Verified</dt><dd>{{ c.lastVerifiedUtc | date: 'MMM d, y' }}@if (c.verifiedBy) { by {{ c.verifiedBy }} <i class="muted">(self-reported, not authenticated)</i> }</dd> }
             <dt>Last checked</dt><dd>{{ (c.lastVerifiedUtc ?? c.updatedAtUtc) | date: 'MMM d, y' }}</dd>
           </dl>
           @if (c.researchNotes) { <p class="small cc-notes">{{ c.researchNotes }}</p> }

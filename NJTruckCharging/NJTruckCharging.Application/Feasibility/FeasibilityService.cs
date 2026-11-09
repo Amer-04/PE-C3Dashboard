@@ -35,7 +35,7 @@ public sealed class FeasibilityService(IReadStore read, IFeasibilityStore store,
         return new FeasibilitySummaryDto(siteId, AllKeys.Length, verified, concern, AllKeys.Length - reviewed, reviewed, lastReviewed);
     }
 
-    public enum UpsertOutcome { Saved, CandidateNotFound, EvidenceRequired, InvalidEvidenceDate }
+    public enum UpsertOutcome { Saved, CandidateNotFound, EvidenceRequired, InvalidEvidenceDate, RecordedByRequired }
 
     /// <summary>Earliest plausible evidence date (rejects typos such as year 0202).</summary>
     public static readonly DateOnly MinEvidenceDate = new(1900, 1, 1);
@@ -64,6 +64,9 @@ public sealed class FeasibilityService(IReadStore read, IFeasibilityStore store,
         var evidence = Clean(req.Evidence);
         var source = Clean(req.SourceUrl);
         var recordedBy = Clean(req.RecordedBy) ?? currentUser;
+        // A new Verified verdict must name who recorded it (self-reported free text; the app has no login).
+        if (req.Status == FeasibilityStatus.Verified && recordedBy is null)
+            return (UpsertOutcome.RecordedByRequired, null);
 
         var entity = await store.FindAsync(req.SiteId, req.ItemKey, ct);
         var previous = entity?.Status ?? FeasibilityStatus.Unknown;

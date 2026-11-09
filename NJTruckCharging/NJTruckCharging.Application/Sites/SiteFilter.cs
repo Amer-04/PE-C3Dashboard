@@ -102,13 +102,13 @@ public sealed class SiteFilter
             const FeasibilityStatus ver = FeasibilityStatus.Verified;
             if (TruckEntranceVerified)
                 q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.TruckEntranceAccess && f.Status == ver
-                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null));
+                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != ""));
             if (ElectricalVerified)
                 q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.ElectricalService && f.Status == ver
-                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null));
+                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != ""));
             if (ParkingVerified)
                 q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.TruckParkingCapacity && f.Status == ver
-                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null));
+                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != ""));
         }
         if (screenings is not null && ScreeningDecisions is { Length: > 0 })
             q = q.Where(ScreeningRules.InDecisions(ScreeningRules.ParseTokens(ScreeningDecisions), screenings));

@@ -22,8 +22,8 @@ public enum CheckState
 {
     /// <summary>Nothing recorded (or reset to Unknown).</summary>
     NotStarted = 0,
-    /// <summary>A verdict exists but lacks evidence text, a source URL or an evidence date (incl. records made
-    /// before Phase 1). Kept as-is and flagged — never deleted and never counted as reviewed or verified.</summary>
+    /// <summary>A verdict exists but lacks evidence text, a source URL, an evidence date or a Recorded-by name (incl.
+    /// records made before Phase 1). Kept as-is and flagged — never deleted and never counted as reviewed or verified.</summary>
     InsufficientEvidence = 1,
     /// <summary>Sources disagree. Not reviewed, not verified.</summary>
     Conflicting = 2,
@@ -96,9 +96,16 @@ public static class ResearchQuality
 
     // ---------------- in memory ----------------
 
-    /// <summary>Evidence text, a source URL and an evidence date are all present.</summary>
+    /// <summary>
+    /// The shared evidence standard. A verdict is documented only when it has evidence text, a source reference, an
+    /// evidence date and a reviewer-entered "Recorded by" name (self-reported, not authenticated). A Verified verdict
+    /// counts as verified only when it is documented; anything missing — including records made before Phase 1 — is
+    /// kept as recorded and shown as Insufficient evidence. The SQL forms (ResearchReadiness.EvidenceIn,
+    /// SiteFilter's verified filters, <see cref="StageIn"/>) repeat these exact conditions; tests compare them.
+    /// </summary>
     public static bool IsDocumented(FeasibilityItem f) =>
-        !string.IsNullOrEmpty(f.Evidence) && !string.IsNullOrEmpty(f.SourceUrl) && f.EvidenceDate is not null;
+        !string.IsNullOrEmpty(f.Evidence) && !string.IsNullOrEmpty(f.SourceUrl) && f.EvidenceDate is not null
+        && !string.IsNullOrEmpty(f.Reviewer);
 
     /// <summary>What a verdict lacks to be documented, e.g. "a source URL and an evidence date" (empty when documented).</summary>
     public static string MissingText(FeasibilityItem f)
@@ -107,6 +114,7 @@ public static class ResearchQuality
         if (string.IsNullOrEmpty(f.Evidence)) parts.Add("evidence text");
         if (string.IsNullOrEmpty(f.SourceUrl)) parts.Add("a source URL");
         if (f.EvidenceDate is null) parts.Add("an evidence date");
+        if (string.IsNullOrEmpty(f.Reviewer)) parts.Add("a Recorded-by name");
         return parts.Count <= 1 ? string.Concat(parts) : string.Join(", ", parts[..^1]) + " and " + parts[^1];
     }
 
@@ -230,7 +238,7 @@ public static class ResearchQuality
             feas.Count(f => f.SiteId == s.SiteId
                             && (f.ItemKey == k1 || f.ItemKey == k2 || f.ItemKey == k3 || f.ItemKey == k4 || f.ItemKey == k5 || f.ItemKey == k6 || f.ItemKey == k7)
                             && (f.Status == verified || f.Status == concern)
-                            && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null)
+                            && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != "")
             + (contacts.Any(c => c.SiteId == s.SiteId && c.VerificationStatus == cver && c.SourceUrl != null && c.SourceUrl != "") ? 1 : 0);
 
         var inSet = InResearchSet(src);

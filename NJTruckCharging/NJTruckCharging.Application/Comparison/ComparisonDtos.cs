@@ -17,6 +17,8 @@ public sealed record VerificationDto(FeasibilityStatus Status, string? Evidence,
 {
     /// <summary>Evidence text, source URL and evidence date are all present (Research.ResearchQuality.IsDocumented).</summary>
     public bool Documented { get; init; }
+    /// <summary>What an undocumented verdict lacks, e.g. "a source URL and a Recorded-by name" (empty when documented).</summary>
+    public string Missing { get; init; } = "";
 }
 
 /// <summary>A source-data screen result with a plain-language detail.</summary>

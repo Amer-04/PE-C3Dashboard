@@ -75,7 +75,7 @@ public sealed class SiteComparisonService(IReadStore store)
         IReadOnlyDictionary<FeasibilityItemKey, FeasibilityItem> feas, SiteScreening? screening)
     {
         VerificationDto V(FeasibilityItemKey k) => feas.TryGetValue(k, out var f)
-            ? new VerificationDto(f.Status, f.Evidence, f.ReviewedAtUtc) { Documented = Research.ResearchQuality.IsDocumented(f) }
+            ? new VerificationDto(f.Status, f.Evidence, f.ReviewedAtUtc) { Documented = Research.ResearchQuality.IsDocumented(f), Missing = Research.ResearchQuality.MissingText(f) }
             : new VerificationDto(FeasibilityStatus.Unknown, null, null);
 
         var ios = IosRules.Assess(s, feas.GetValueOrDefault(IosRules.ReviewKey));
@@ -192,7 +192,7 @@ public sealed class SiteComparisonService(IReadStore store)
             hint: "Desktop screen at ~15 trailers per open acre. Not a verified or buildable count.");
         Row("verifiedParking", "Parking", "Verified parking capacity", s => s.VerifiedParking.Status switch
         {
-            FeasibilityStatus.Verified when !s.VerifiedParking.Documented => ($"Insufficient evidence — recorded as verified without source/date: {s.VerifiedParking.Evidence ?? "no detail"}", "unknown"),
+            FeasibilityStatus.Verified when !s.VerifiedParking.Documented => ($"Insufficient evidence — recorded as verified without {s.VerifiedParking.Missing}: {s.VerifiedParking.Evidence ?? "no detail"}", "unknown"),
             FeasibilityStatus.Verified => (s.VerifiedParking.Evidence is { Length: > 0 } e ? $"Verified — {e}" : "Verified (no count recorded)", "verified"),
             FeasibilityStatus.Conflicting => ($"Conflicting evidence — {s.VerifiedParking.Evidence ?? "no detail recorded"}", "concern"),
             FeasibilityStatus.Concern => ($"Concern — {s.VerifiedParking.Evidence ?? "no detail recorded"}", "concern"),
@@ -227,7 +227,7 @@ public sealed class SiteComparisonService(IReadStore store)
 
     private static (string, string) Verdict(VerificationDto v) => v.Status switch
     {
-        FeasibilityStatus.Verified when !v.Documented => ($"Insufficient evidence — recorded as verified without source/date: {v.Evidence ?? "no detail"}", "unknown"),
+        FeasibilityStatus.Verified when !v.Documented => ($"Insufficient evidence — recorded as verified without {v.Missing}: {v.Evidence ?? "no detail"}", "unknown"),
         FeasibilityStatus.Verified => (v.Evidence is { Length: > 0 } e ? $"Verified — {e}" : "Verified", "verified"),
         FeasibilityStatus.Conflicting => (v.Evidence is { Length: > 0 } e ? $"Conflicting evidence — {e}" : "Conflicting evidence", "concern"),
         FeasibilityStatus.Concern => (v.Evidence is { Length: > 0 } e ? $"Concern — {e}" : "Concern", "concern"),

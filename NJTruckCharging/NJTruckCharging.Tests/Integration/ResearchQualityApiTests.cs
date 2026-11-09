@@ -21,13 +21,14 @@ public sealed class ResearchQualityWebAppFactory : TestWebAppFactory
     }
 
     /// <summary>Inserts a feasibility row the way records made before Phase 1 look: no source, no evidence date, no history.</summary>
-    public async Task InsertLegacyVerdictAsync(string siteId, string itemKey, string status, string evidence)
+    public async Task InsertLegacyVerdictAsync(string siteId, string itemKey, string status, string evidence,
+        string? sourceUrl = null, DateOnly? evidenceDate = null)
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO FeasibilityItems (SiteId, ItemKey, Status, Evidence, Reviewer, ReviewedAtUtc, CreatedAtUtc, UpdatedAtUtc)
-            VALUES ({siteId}, {itemKey}, {status}, {evidence}, NULL, '2026-10-20T00:00:00+00:00', '2026-10-20T00:00:00+00:00', '2026-10-20T00:00:00+00:00')");
+            INSERT INTO FeasibilityItems (SiteId, ItemKey, Status, Evidence, SourceUrl, EvidenceDate, Reviewer, ReviewedAtUtc, CreatedAtUtc, UpdatedAtUtc)
+            VALUES ({siteId}, {itemKey}, {status}, {evidence}, {sourceUrl}, {evidenceDate}, NULL, '2026-10-20T00:00:00+00:00', '2026-10-20T00:00:00+00:00', '2026-10-20T00:00:00+00:00')");
     }
 
     public async Task<int> HistoryCountAsync(string siteId)
@@ -355,7 +356,7 @@ public class ResearchQualityApiTests(ResearchQualityWebAppFactory f) : IClassFix
     {
         Assert.Equal(HttpStatusCode.OK, (await C.PutAsJsonAsync("/api/feasibility", new
         {
-            siteId = "TEST-0037", itemKey = "ParcelIdentity", status = "Verified", evidence = "Tax map matches", evidenceDate = Date
+            siteId = "TEST-0037", itemKey = "ParcelIdentity", status = "Verified", evidence = "Tax map matches", evidenceDate = Date, recordedBy = "Tester"
         })).StatusCode);
         AssertInsufficient(await ViewAsync("TEST-0037"));
     }
@@ -365,9 +366,46 @@ public class ResearchQualityApiTests(ResearchQualityWebAppFactory f) : IClassFix
     {
         Assert.Equal(HttpStatusCode.OK, (await C.PutAsJsonAsync("/api/feasibility", new
         {
-            siteId = "TEST-0038", itemKey = "ParcelIdentity", status = "Verified", evidence = "Tax map matches", sourceUrl = Src
+            siteId = "TEST-0038", itemKey = "ParcelIdentity", status = "Verified", evidence = "Tax map matches", sourceUrl = Src, recordedBy = "Tester"
         })).StatusCode);
         AssertInsufficient(await ViewAsync("TEST-0038"));
+    }
+
+    [Fact]
+    public async Task A_new_verified_verdict_requires_a_recorded_by_name()
+    {
+        foreach (var by in new string?[] { null, "", "   " })
+        {
+            var r = await C.PutAsJsonAsync("/api/feasibility", new
+            {
+                siteId = "TEST-0045", itemKey = "ParcelIdentity", status = "Verified", evidence = "Tax map matches",
+                sourceUrl = Src, evidenceDate = Date, recordedBy = by
+            });
+            Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+            Assert.Contains("self-reported", await r.Content.ReadAsStringAsync());
+        }
+        Assert.Equal(0, await f.HistoryCountAsync("TEST-0045"));
+        Assert.Equal("NotStarted", (await ViewAsync("TEST-0045")).CheckState);
+
+        var ok = await Json(await Feas("TEST-0045", "ParcelIdentity", "Verified", "Tax map matches", by: "Dana"));
+        Assert.Equal("Dana", ok.GetProperty("reviewer").GetString());
+        Assert.Equal("Verified", (await ViewAsync("TEST-0045")).SiteEvidence);
+    }
+
+    [Fact]
+    public async Task Legacy_record_with_source_and_date_but_no_recorded_by_is_insufficient_everywhere()
+    {
+        await f.InsertLegacyVerdictAsync("TEST-0046", "ParcelIdentity", "Verified", "Tax map matches", Src, new DateOnly(2026, 9, 1));
+        await f.InsertLegacyVerdictAsync("TEST-0047", "TruckEntranceAccess", "Verified", "Curb cuts", Src, new DateOnly(2026, 9, 1));
+        AssertInsufficient(await ViewAsync("TEST-0046"));
+
+        // Compare: the undocumented entrance verdict is not shown as verified and is listed as still needing evidence.
+        var cmp = await Json(await C.GetAsync("/api/compare?siteIds=TEST-0046&siteIds=TEST-0047"));
+        var rows = cmp.GetProperty("rows").EnumerateArray().ToList();
+        string Cell(string key, int site) => rows.Single(r => r.GetProperty("key").GetString() == key).GetProperty("values")[site].GetString()!;
+        Assert.StartsWith("Insufficient evidence", Cell("truckEntrance", 1));
+        Assert.Contains("without a Recorded-by name", Cell("truckEntrance", 1));
+        Assert.Contains("insufficient evidence", Cell("missing", 0));
     }
 
     [Fact]
