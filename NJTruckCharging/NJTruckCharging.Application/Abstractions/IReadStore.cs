@@ -19,6 +19,9 @@ public interface IReadStore
     IQueryable<FeasibilityItem> FeasibilityItems { get; }
     IQueryable<SiteScreening> SiteScreenings { get; }
     IQueryable<SiteScreeningEntry> SiteScreeningEntries { get; }
+    IQueryable<MethodologyVersion> MethodologyVersions { get; }
+    IQueryable<MethodologyActivation> MethodologyActivations { get; }
+    IQueryable<SiteVersionScore> SiteVersionScores { get; }
 
     Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken ct = default);
     Task<int> CountAsync<T>(IQueryable<T> query, CancellationToken ct = default);

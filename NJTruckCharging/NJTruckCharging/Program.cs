@@ -28,7 +28,7 @@ builder.Services.AddCors(o => o.AddPolicy(AngularCors, p => p
     .WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:4200"])
     .WithHeaders("Content-Type", "Accept")
     .WithMethods("GET", "POST", "PUT", "DELETE")
-    .WithExposedHeaders("Content-Disposition")));
+    .WithExposedHeaders("Content-Disposition", "X-Methodology-Version")));
 
 var app = builder.Build();
 
@@ -45,6 +45,20 @@ else
 }
 
 app.UseCors(AngularCors);
+
+// Every API response states which methodology version produced the scores it contains, so the dashboard can detect
+// a publish made elsewhere and reload instead of mixing score versions.
+var activeMethodology = app.Services.GetRequiredService<NJTruckCharging.Application.Methodology.ActiveMethodologyCache>();
+app.Use((ctx, next) =>
+{
+    ctx.Response.OnStarting(() =>
+    {
+        if (activeMethodology.Current is { } a) ctx.Response.Headers["X-Methodology-Version"] = a.VersionId.ToString();
+        return Task.CompletedTask;
+    });
+    return next(ctx);
+});
+
 app.MapControllers();
 
 // Create / migrate the database and seed it from the workbook on first run.

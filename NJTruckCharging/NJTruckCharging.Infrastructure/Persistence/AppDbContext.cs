@@ -16,6 +16,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FeasibilityItem> FeasibilityItems => Set<FeasibilityItem>();
     public DbSet<SiteScreening> SiteScreenings => Set<SiteScreening>();
     public DbSet<SiteScreeningEntry> SiteScreeningEntries => Set<SiteScreeningEntry>();
+    public DbSet<MethodologyVersion> MethodologyVersions => Set<MethodologyVersion>();
+    public DbSet<MethodologyState> MethodologyState => Set<MethodologyState>();
+    public DbSet<MethodologyActivation> MethodologyActivations => Set<MethodologyActivation>();
+    public DbSet<SiteVersionScore> SiteVersionScores => Set<SiteVersionScore>();
+    public DbSet<CustomDataField> CustomDataFields => Set<CustomDataField>();
+    public DbSet<CustomFieldValue> CustomFieldValues => Set<CustomFieldValue>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

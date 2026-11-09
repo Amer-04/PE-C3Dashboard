@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CONTACT_READINESS, SCREENING_DECISIONS, SEGMENT_COUNTIES, SITE_EVIDENCE, SiteFilter } from '../../core/models';
 import { SiteStore } from '../../core/site-store';
+import { MethodologyStore } from '../../core/methodology-store';
 
 @Component({
   selector: 'app-filter-panel',
@@ -46,7 +47,7 @@ import { SiteStore } from '../../core/site-store';
 
       <label class="field">
         <span>Minimum score <b>{{ f().minScore ?? 0 }}</b></span>
-        <input type="range" min="0" max="110" step="5" [value]="f().minScore ?? 0"
+        <input type="range" min="0" [max]="methodology.maxPossible()" step="5" [value]="f().minScore ?? 0"
                (change)="store.patch({ minScore: +val($event) || null })" />
       </label>
 
@@ -177,6 +178,7 @@ import { SiteStore } from '../../core/site-store';
 })
 export class FilterPanelComponent {
   protected readonly store = inject(SiteStore);
+  protected readonly methodology = inject(MethodologyStore);
   protected readonly f = this.store.filter;
   protected readonly segments = [1, 2, 3, 4, 5, 6];
   protected readonly counties = SEGMENT_COUNTIES;

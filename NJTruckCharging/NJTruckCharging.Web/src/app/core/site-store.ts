@@ -1,7 +1,8 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { catchError, combineLatest, debounceTime, of, switchMap, tap } from 'rxjs';
 import { ApiService } from './api.service';
+import { MethodologyStore } from './methodology-store';
 import {
   DEFAULT_FILTER, DashboardSummary, FilterOptions, PagedResult, PowerEdisonSite, SiteDetail,
   SiteFilter, SiteListItem, SiteMapPoint, SiteSort,
@@ -11,6 +12,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class SiteStore {
   private readonly api = inject(ApiService);
+  private readonly methodology = inject(MethodologyStore);
 
   readonly filter = signal<SiteFilter>({ ...DEFAULT_FILTER });
   readonly page = signal(1);
@@ -36,6 +38,9 @@ export class SiteStore {
   });
 
   constructor() {
+    // A newly active methodology changes every score and rank: re-run map, KPIs, table and the open detail together.
+    effect(() => { if (this.methodology.epoch() > 0) untracked(() => this.refreshSelected()); });
+
     this.api.powerEdisonSites().subscribe(s => this.powerEdisonSites.set(s));
     this.api.filterOptions().subscribe(o => this.options.set(o));
 

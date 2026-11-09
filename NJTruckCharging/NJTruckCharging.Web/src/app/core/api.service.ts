@@ -7,6 +7,10 @@ import {
   UpdateSavedSiteRequest, UpsertFeasibilityRequest, SiteComparison, SiteScreening, ScreeningSummary,
   UpsertScreeningRequest,
 } from './models';
+import {
+  Activation, ActiveMethodology, ComparisonPage, MethodologyRules, PreviewSummary, PublishResult, ScoringFieldInfo,
+  ValidationResult, VersionDetail, VersionSummary, CustomField, CustomFieldRequest, CustomValue, ImportPreview, ImportResult,
+} from './methodology.models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -37,6 +41,56 @@ export class ApiService {
   filterOptions() { return this.http.get<FilterOptions>(`${this.base}/filter-options`); }
   mapsConfig() { return this.http.get<MapsConfig>(`${this.base}/config/maps`); }
   methodology() { return this.http.get<MethodologyNote[]>(`${this.base}/methodology`); }
+
+  // ---- Editable methodology (writes are authorised server-side by trusted network + same origin; no credential in the browser) ----
+  activeMethodology() { return this.http.get<ActiveMethodology>(`${this.base}/methodology/active`); }
+  methodologyFields() { return this.http.get<ScoringFieldInfo[]>(`${this.base}/methodology/fields`); }
+  methodologyVersions() { return this.http.get<VersionSummary[]>(`${this.base}/methodology/versions`); }
+  methodologyVersion(id: number) { return this.http.get<VersionDetail>(`${this.base}/methodology/versions/${id}`); }
+  methodologyActivations() { return this.http.get<Activation[]>(`${this.base}/methodology/activations`); }
+  validateRules(rules: MethodologyRules) { return this.http.post<ValidationResult>(`${this.base}/methodology/validate`, rules); }
+  methodologyComparison(id: number, q: { segment?: number | null; sort?: string; search?: string; page: number; pageSize: number }) {
+    let p = new HttpParams().set('page', q.page).set('pageSize', q.pageSize);
+    if (q.segment) p = p.set('segment', q.segment);
+    if (q.sort) p = p.set('sort', q.sort);
+    if (q.search) p = p.set('search', q.search);
+    return this.http.get<ComparisonPage>(`${this.base}/methodology/versions/${id}/comparison`, { params: p });
+  }
+  createDraft(name: string | null, basedOnVersionId: number | null) {
+    return this.http.post<VersionDetail>(`${this.base}/methodology/drafts`, { name, basedOnVersionId });
+  }
+  duplicateVersion(id: number, name: string | null) {
+    return this.http.post<VersionDetail>(`${this.base}/methodology/versions/${id}/duplicate`, { name });
+  }
+  saveDraft(id: number, name: string, changeSummary: string | null, rules: MethodologyRules) {
+    return this.http.put<VersionDetail>(`${this.base}/methodology/drafts/${id}`, { name, changeSummary, rules });
+  }
+  deleteDraft(id: number) { return this.http.delete<void>(`${this.base}/methodology/drafts/${id}`); }
+  previewVersion(id: number, topN: number) {
+    return this.http.post<PreviewSummary>(`${this.base}/methodology/versions/${id}/preview?topN=${topN}`, null);
+  }
+  // ---- Custom data fields (typed; values recorded per site with evidence, or imported by Site ID) ----
+  customFields() { return this.http.get<CustomField[]>(`${this.base}/custom-fields`); }
+  createCustomField(req: CustomFieldRequest) { return this.http.post<CustomField>(`${this.base}/custom-fields`, req); }
+  updateCustomField(key: string, req: CustomFieldRequest) { return this.http.put<CustomField>(`${this.base}/custom-fields/${key}`, req); }
+  customValues(siteId: string) { return this.http.get<CustomValue[]>(`${this.base}/custom-fields/sites/${encodeURIComponent(siteId)}`); }
+  setCustomValue(key: string, siteId: string, value: string, evidence: string | null) {
+    return this.http.put<CustomValue>(`${this.base}/custom-fields/${key}/sites/${encodeURIComponent(siteId)}`, { value, evidence });
+  }
+  clearCustomValue(key: string, siteId: string) {
+    return this.http.delete<void>(`${this.base}/custom-fields/${key}/sites/${encodeURIComponent(siteId)}`);
+  }
+  previewCustomImport(key: string, fileName: string, csv: string) {
+    return this.http.post<ImportPreview>(`${this.base}/custom-fields/${key}/import/preview`, { fileName, csv });
+  }
+  commitCustomImport(key: string, fileName: string, csv: string, token: string) {
+    return this.http.post<ImportResult>(`${this.base}/custom-fields/${key}/import/commit`, { fileName, csv, token });
+  }
+
+  publishVersion(id: number, expectedActiveVersionId: number, rulesHash: string, note: string | null) {
+    return this.http.post<PublishResult>(`${this.base}/methodology/versions/${id}/publish`,
+      { confirm: true, expectedActiveVersionId, rulesHash, note });
+  }
 
   // ---- Saved sites (bookmarks) ----
   savedSites() { return this.http.get<SavedSite[]>(`${this.base}/saved-sites`); }

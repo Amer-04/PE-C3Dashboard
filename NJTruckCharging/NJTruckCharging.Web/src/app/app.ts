@@ -5,6 +5,7 @@ import { filter, map } from 'rxjs';
 import { SavedStore } from './core/saved-store';
 import { CompareStore } from './core/compare-store';
 import { ThemeService } from './core/theme.service';
+import { MethodologyStore } from './core/methodology-store';
 
 @Component({
   selector: 'app-root',
@@ -33,6 +34,11 @@ import { ThemeService } from './core/theme.service';
           </a>
           <a routerLink="/methodology" routerLinkActive="active">Methodology</a>
         </nav>
+        @if (methodology.active(); as m) {
+          <a class="method-chip" routerLink="/methodology" [title]="'Scores shown everywhere come from methodology ' + methodology.label()">
+            Scoring v{{ m.version.id }}{{ m.version.isBaseline ? ' · original' : ' · custom' }}
+          </a>
+        }
         <button type="button" class="theme-toggle" (click)="theme.toggle()"
                 [title]="theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
                 [attr.aria-label]="theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'">
@@ -77,4 +83,5 @@ export class App {
     { initialValue: this.router.url });
   protected readonly onComparePage = computed(() => (this.url() ?? '').startsWith('/compare'));
   protected readonly theme = inject(ThemeService);
+  protected readonly methodology = inject(MethodologyStore);
 }

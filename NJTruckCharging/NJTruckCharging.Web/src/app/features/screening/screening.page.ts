@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, effect, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { MethodologyStore } from '../../core/methodology-store';
 import {
   DEFAULT_FILTER, IOS_LABELS, IosClassification, PagedResult, SCREENING_DECISIONS, SCREENING_LABELS, ScreeningCounts,
   ScreeningDecision, ScreeningSummary, SiteDetail, SiteFilter, SiteListItem, SiteScreening,
@@ -227,7 +228,10 @@ export class ScreeningPage {
     if (site) { this.search.set(site); this.topN.set(null); this.pendingSelect = site; }
     this.reload();
     this.loadSummary();
+    effect(() => { if (this.methodology.epoch() > 0) untracked(() => { this.reload(); this.loadSummary(); }); });
   }
+
+  private readonly methodology = inject(MethodologyStore);
 
   /** Counts for the current scope: the selected segment, else all segments (both already limited to top-N). */
   protected readonly scoped = computed<ScreeningCounts | null>(() => {

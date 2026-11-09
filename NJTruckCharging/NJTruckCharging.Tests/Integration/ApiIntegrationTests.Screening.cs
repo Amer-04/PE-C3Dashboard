@@ -119,9 +119,9 @@ public partial class ApiIntegrationTests
 
         var csv = await (await client.GetAsync("/api/sites/export?screeningDecisions=unsuitable")).Content.ReadAsStringAsync();
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.TrimEnd('\r')).ToList();
-        Assert.EndsWith(",screening_decision,screening_evidence", lines[0]);
+        Assert.EndsWith(",screening_decision,screening_evidence,methodology_version", lines[0]);
         Assert.Equal(2, lines.Count);
-        Assert.EndsWith(",Unsuitable,Wetlands on aerial", lines[1]);
+        Assert.Contains(",Unsuitable,Wetlands on aerial,v", lines[1]);   // every row names the methodology version
     }
 
     [Fact]

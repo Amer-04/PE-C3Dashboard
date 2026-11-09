@@ -132,6 +132,8 @@ export interface SiteListItem {
   ownerMailAddress?: string | null; ownerMailCity?: string | null; ownerMailZip?: string | null;
   /** A reviewer verified, with evidence, that the listed business operates at the address. */
   businessListingConfirmed?: boolean;
+  /** Website listed with the parcel's business listing in the C3 data (same value Site Details shows). */
+  businessWebsite?: string | null;
 }
 
 /** Most relevant researched contact for a site. `verified` = Verified status with a cited source. */
@@ -154,6 +156,9 @@ export interface SiteDetail {
   scoreLines: ScoreLine[];
   truckDemandPoints: number;
   sitesInSegment: number;
+  /** Methodology version that produced this site's score, rank and breakdown. */
+  methodologyVersionId: number | null;
+  methodologyVersionName: string | null;
   pamsPin: string | null; block: string | null; lot: string | null; qual: string | null;
   lotsInSite: number; memberLots: string | null; recordedAcres: number; buildingCoverage: number; zoning: string | null;
   shortSideFt: number; compactness: number; buildingDescription: string | null; landDescription: string | null;

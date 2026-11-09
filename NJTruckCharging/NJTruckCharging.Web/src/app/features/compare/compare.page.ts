@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, u
 import { HttpErrorResponse, httpResource } from '@angular/common/http';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, compareParams } from '../../core/api.service';
+import { MethodologyStore } from '../../core/methodology-store';
 import { CompareStore } from '../../core/compare-store';
 import {
   COMPARE_MAX, COMPARE_MIN, ComparedSite, ComparisonRow, DEFAULT_FILTER, SiteComparison, SiteListItem,
@@ -183,7 +184,10 @@ export class ComparePage {
   /** Stable key so label-only changes to the selection don't refetch. */
   private readonly ids = computed(() => this.store.siteIds(), { equal: (a, b) => a.join('|') === b.join('|') });
 
+  private readonly methodology = inject(MethodologyStore);
+
   protected readonly comparison = httpResource<SiteComparison>(() => {
+    this.methodology.epoch(); // re-fetch when the active scoring methodology changes
     const ids = this.ids();
     return ids.length >= COMPARE_MIN ? { url: '/api/compare', params: compareParams(ids) } : undefined;
   });

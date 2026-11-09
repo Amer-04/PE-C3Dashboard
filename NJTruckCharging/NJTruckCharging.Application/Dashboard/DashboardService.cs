@@ -40,12 +40,15 @@ public sealed class DashboardService(IReadStore store, TimeProvider clock)
                 seg.PowerEdisonSitesInSegment);
         }).ToList();
 
-        var histogram = Enumerable.Range(-1, 13).Select(i =>
+        // 10-point buckets spanning the scores actually present: an edited methodology can move scores outside the
+        // original −10…110 range, and every site must land in exactly one bucket.
+        var firstBucket = rows.Count == 0 ? 0 : Math.Min(0, (int)Math.Floor(rows.Min(r => r.Score) / 10));
+        var lastBucket = rows.Count == 0 ? 11 : Math.Max(11, (int)Math.Floor(rows.Max(r => r.Score) / 10));
+        var histogram = Enumerable.Range(firstBucket, lastBucket - firstBucket + 1).Select(i =>
         {
             var lo = i * 10;
-            var label = i == 11 ? "110+" : $"{lo}–{lo + 9}";
-            var count = rows.Count(r => i == 11 ? r.Score >= 110 : r.Score >= lo && r.Score < lo + 10);
-            return new BucketDto(label, count);
+            var count = rows.Count(r => r.Score >= lo && r.Score < lo + 10);
+            return new BucketDto($"{lo}–{lo + 9}", count);
         }).Where(b => b.Count > 0 || !b.Label.StartsWith('-')).ToList();
 
         var classes = rows.GroupBy(r => r.PropClass.Contains("4B") ? "Industrial (4B)"

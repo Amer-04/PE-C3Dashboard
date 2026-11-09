@@ -27,6 +27,9 @@ public static class DependencyInjection
         services.AddScoped<ISiteContactStore, SiteContactStore>();
         services.AddScoped<IFeasibilityStore, FeasibilityStore>();
         services.AddScoped<IScreeningStore, ScreeningStore>();
+        services.AddScoped<IMethodologyStore, MethodologyStore>();
+        services.AddScoped<ICustomFieldStore, CustomFieldStore>();
+        services.AddSingleton<IActivationHook, NoOpActivationHook>();
         services.AddSingleton<IWorkbookReader, CandidateWorkbookReader>();
         return services;
     }

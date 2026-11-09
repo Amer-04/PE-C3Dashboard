@@ -24,6 +24,11 @@ export const routes: Routes = [
     title: 'Compare sites · C3 Site Finder',
   },
   {
+    path: 'methodology/versions/:id',
+    loadComponent: () => import('./features/methodology/methodology-editor.page').then(m => m.MethodologyEditorPage),
+    title: 'Edit methodology · C3 Site Finder',
+  },
+  {
     path: 'methodology',
     loadComponent: () => import('./features/methodology/methodology.page').then(m => m.MethodologyPage),
     title: 'Methodology · C3 Site Finder',

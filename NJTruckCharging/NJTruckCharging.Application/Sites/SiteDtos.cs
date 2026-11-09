@@ -29,7 +29,9 @@ public sealed record SiteListItemDto(
     string? OwnerMailAddress = null, string? OwnerMailCity = null, string? OwnerMailZip = null,
     /// <summary>True only when a reviewer verified (with evidence) that the listed business operates at the address.
     /// The listed phone itself is still unverified.</summary>
-    bool BusinessListingConfirmed = false);
+    bool BusinessListingConfirmed = false,
+    /// <summary>Website listed with the parcel's business listing in the C3 data (same value Site Details shows).</summary>
+    string? BusinessWebsite = null);
 
 public sealed record ScoreLineDto(string Key, string Label, string Group, double Points, double Max, double Min, string Basis);
 
@@ -43,6 +45,9 @@ public sealed record SiteDetailDto
     public required IReadOnlyList<ScoreLineDto> ScoreLines { get; init; }
     public required double TruckDemandPoints { get; init; }
     public required int SitesInSegment { get; init; }
+    /// <summary>Methodology version that produced this site's score, rank and breakdown.</summary>
+    public int? MethodologyVersionId { get; init; }
+    public string? MethodologyVersionName { get; init; }
 
     public string? PamsPin { get; init; }
     public string? Block { get; init; }

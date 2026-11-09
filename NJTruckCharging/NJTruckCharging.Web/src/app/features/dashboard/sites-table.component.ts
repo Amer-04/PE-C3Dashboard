@@ -6,10 +6,11 @@ import { SavedStore } from '../../core/saved-store';
 import { scoreCss } from '../../shared/score-color';
 import { CompareToggleComponent } from '../compare/compare-toggle.component';
 import { ContactCellComponent } from './contact-cell.component';
+import { BusinessCellComponent } from './business-cell.component';
 
 @Component({
   selector: 'app-sites-table',
-  imports: [DecimalPipe, CompareToggleComponent, ContactCellComponent],
+  imports: [DecimalPipe, CompareToggleComponent, ContactCellComponent, BusinessCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="panel table-panel">
@@ -58,7 +59,7 @@ import { ContactCellComponent } from './contact-cell.component';
                 <td class="num">{{ s.milesToExit | number: '1.2-2' }}<br /><small class="muted">{{ s.nearestHighway }} {{ s.nearestExit }}</small></td>
                 <td class="num">{{ s.trucksBased5Mi | number }}</td>
                 <td class="num">{{ s.truckTraffic | number }}</td>
-                <td class="ellipsis" [title]="s.businesses ?? ''">{{ s.businesses || '—' }}</td>
+                <td class="biz-col"><app-business-cell [site]="s" /></td>
                 <td class="num" [class.pe-near]="s.nearPowerEdison">{{ s.milesToPowerEdison | number: '1.1-1' }}</td>
                 <td class="flags-cell">
                   @if (s.freight) { <span class="flag good" title="Trucking / logistics business on site">Truck</span> }
