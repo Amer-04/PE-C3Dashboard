@@ -24,7 +24,9 @@ No other Supabase project is used or changed.
   to `anon`, `authenticated`, `service_role` or `PUBLIC`, and row-level security is on for every table. A Supabase
   token or the publishable key therefore reads nothing directly from the database.
 * **Database roles (least privilege):**
-  * `c3_migrator` — owns schema `c3` and nothing else; used only for the import, then locked (`NOLOGIN`).
+  * Schema `c3` is created and owned by the project administrator (step 1).
+  * `c3_migrator` — only `USAGE` + `CREATE` on schema `c3` (never on the database); owns the tables it creates there;
+    used only for the import, then locked: schema rights revoked and `NOLOGIN`.
   * `c3_runtime_readonly` — the API's login: `USAGE` + `SELECT` on `c3` only, read-only transactions, 60 s statement
     timeout, 10 connections max, `SELECT`-only row-level-security policies.
 * **Secrets:** passwords live only in a password manager, the operator's environment variables and Render's
@@ -87,8 +89,10 @@ dotnet run --project NJTruckCharging.CloudCopy -- inventory-sql    # read-only c
 dotnet run --project NJTruckCharging.CloudCopy -- bootstrap-sql > $env:TEMP\c3-step1.sql
 ```
 
-**Step 1 (SQL Editor, as postgres):** paste `c3-step1.sql` (= `sql/01-roles-and-schema.sql` with SCRAM verifiers)
-and run it; then delete the file. It stops without changes if `c3` or a `c3_*` role already exists.
+**Step 1 (SQL Editor, as postgres):** paste the SQL printed by `bootstrap-sql` (= `sql/01-roles-and-schema.sql` with
+SCRAM verifiers) and run it. It creates the two roles and schema `c3` (owned by the administrator, closed to PUBLIC
+and Supabase's API roles), and grants `c3_migrator` only `USAGE, CREATE` on `c3`. It stops without changes if `c3`
+or a `c3_*` role already exists.
 
 **Steps 2–3 (operator PC, as c3_migrator through the session pooler; host from Dashboard → Connect → Session pooler):**
 

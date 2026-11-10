@@ -1,12 +1,11 @@
--- C3 Site Finder: step 3 of 4, permissions inside schema c3. Run as c3_migrator (the owner) after the data copy;
--- the CloudCopy "secure" command runs this file.
--- c3_runtime_readonly: USAGE + SELECT only. Supabase API roles and PUBLIC: nothing. Row-level security on every table.
-REVOKE ALL ON SCHEMA c3 FROM PUBLIC;
+-- C3 Site Finder: step 3 of 4, table permissions inside schema c3. Run as c3_migrator (the owner of the c3 tables)
+-- after the data copy; the CloudCopy "secure" command runs this file. Schema-level permissions were set by the
+-- administrator in step 1 (schema c3 is owned by the administrator, not by c3_migrator).
+-- c3_runtime_readonly: SELECT only. Supabase API roles and PUBLIC: nothing. Row-level security on every table.
 DO $$
 DECLARE r record; t record;
 BEGIN
   FOR r IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role', 'authenticator') LOOP
-    EXECUTE format('REVOKE ALL ON SCHEMA c3 FROM %I', r.rolname);
     EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA c3 FROM %I', r.rolname);
     EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA c3 FROM %I', r.rolname);
     EXECUTE format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA c3 FROM %I', r.rolname);
@@ -21,4 +20,3 @@ BEGIN
   END LOOP;
 END $$;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA c3 FROM PUBLIC;
-GRANT USAGE ON SCHEMA c3 TO c3_runtime_readonly;
