@@ -6,9 +6,10 @@ import { SavedStore } from './core/saved-store';
 import { CompareStore } from './core/compare-store';
 import { ThemeService } from './core/theme.service';
 import { MethodologyStore } from './core/methodology-store';
+import { AuthService } from './core/auth.service';
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-shell',
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -38,6 +39,10 @@ import { MethodologyStore } from './core/methodology-store';
           <a class="method-chip" routerLink="/methodology" [title]="'Scores shown everywhere come from methodology ' + methodology.label()">
             Scoring v{{ m.version.id }}{{ m.version.isBaseline ? ' · original' : ' · custom' }}
           </a>
+        }
+        @if (auth.enabled) {
+          @if (auth.config.readOnly) { <span class="demo-pill" title="This online demo is read-only. Changes are not saved.">Read-only demo</span> }
+          <button type="button" class="signout" (click)="auth.signOut()" [title]="'Signed in as ' + (auth.email() ?? '')">Sign out</button>
         }
         <button type="button" class="theme-toggle" (click)="theme.toggle()"
                 [title]="theme.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
@@ -76,6 +81,7 @@ import { MethodologyStore } from './core/methodology-store';
   `,
 })
 export class App {
+  protected readonly auth = inject(AuthService);
   protected readonly saved = inject(SavedStore);
   protected readonly compare = inject(CompareStore);
   private readonly router = inject(Router);

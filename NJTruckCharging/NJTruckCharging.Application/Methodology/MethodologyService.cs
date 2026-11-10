@@ -208,8 +208,8 @@ public sealed class MethodologyService(
         if (segment is { } seg) q = q.Where(x => x.Segment == seg);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
-            q = q.Where(x => x.SiteId.Contains(s) || x.SiteAddress.Contains(s) || x.Municipality.Contains(s));
+            var s = search.Trim().ToUpperInvariant();   // case-insensitive on SQL Server and PostgreSQL alike
+            q = q.Where(x => x.SiteId.ToUpper().Contains(s) || x.SiteAddress.ToUpper().Contains(s) || x.Municipality.ToUpper().Contains(s));
         }
         q = sort switch
         {

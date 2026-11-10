@@ -140,13 +140,14 @@ public sealed class SiteFilter
 
         if (!string.IsNullOrWhiteSpace(Search))
         {
-            var term = Search.Trim();
+            // Case-insensitive on every database (SQL Server's collation already is; PostgreSQL's is not).
+            var term = Search.Trim().ToUpperInvariant();
             q = q.Where(s =>
-                s.SiteAddress.Contains(term) ||
-                s.Municipality.Contains(term) ||
-                s.SiteId.Contains(term) ||
-                (s.BusinessesOnSite != null && s.BusinessesOnSite.Contains(term)) ||
-                (s.OwnerMailAddress != null && s.OwnerMailAddress.Contains(term)));
+                s.SiteAddress.ToUpper().Contains(term) ||
+                s.Municipality.ToUpper().Contains(term) ||
+                s.SiteId.ToUpper().Contains(term) ||
+                (s.BusinessesOnSite != null && s.BusinessesOnSite.ToUpper().Contains(term)) ||
+                (s.OwnerMailAddress != null && s.OwnerMailAddress.ToUpper().Contains(term)));
         }
         return q;
     }
