@@ -154,6 +154,20 @@ static async Task<int> CheckLoginAsync()
             || ' | ' || split_part(version(), ' ', 2) AS "Value"
         """).SingleAsync();
     Console.WriteLine("Signed in: " + info);
+
+    // Exact row counts (still read-only) when this login may read the c3 tables, e.g. c3_runtime_readonly after Step 3.
+    var tables = await t.Database.SqlQueryRaw<string>("""
+        SELECT c.relname::text AS "Value" FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'c3' AND c.relkind IN ('r', 'p') AND has_table_privilege(c.oid, 'SELECT') ORDER BY c.relname
+        """).ToListAsync();
+    if (tables.Count > 0)
+    {
+        var counts = new List<(string Table, long Rows)>();
+        foreach (var table in tables)
+            counts.Add((table, await t.Database.SqlQueryRaw<long>($"SELECT count(*) AS \"Value\" FROM c3.\"{table.Replace("\"", "\"\"")}\"").SingleAsync()));
+        Console.WriteLine($"Rows (exact): {string.Join(", ", counts.Select(c => $"{c.Table}={c.Rows:N0}"))}");
+        Console.WriteLine($"Rows (exact): total {counts.Sum(c => c.Rows):N0} in {counts.Count} readable c3 tables");
+    }
     return 0;
 }
 
