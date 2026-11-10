@@ -26,6 +26,7 @@ using NJTruckCharging.Infrastructure.Persistence;
 //   create-schema   as c3_migrator: create schema c3 and its tables (refuses if c3 already has tables)
 //   copy            as c3_migrator: copy every table C3_SOURCE -> c3 (refuses unless every c3 table is empty)
 //   verify          row counts + content hash of every table, source vs target
+//   check-login     READ-ONLY: sign in with C3_TARGET and report who you are and what you may do in schema c3
 //   secure          as c3_migrator: run sql/03-runtime-grants.sql (SELECT-only runtime role, RLS, no API-role access)
 //   lockdown-sql    print sql/04-lockdown.sql (run in the SQL Editor as postgres)
 //   check-sql       print sql/05-check-isolation.sql (read-only; run in the SQL Editor as postgres; all rows OK)
@@ -43,12 +44,13 @@ try
         case "copy": return await CopyAsync();
         case "verify": return await VerifyAsync();
         case "secure": return await SecureAsync();
+        case "check-login": return await CheckLoginAsync();
         case "inventory-sql": Console.WriteLine(Sql.Read("00-inventory.sql")); return 0;
         case "bootstrap-sql": Console.WriteLine(Sql.Bootstrap()); return 0;
         case "lockdown-sql": Console.WriteLine(Sql.Read("04-lockdown.sql")); return 0;
         case "check-sql": Console.WriteLine(Sql.Read("05-check-isolation.sql")); return 0;
         default:
-            Console.Error.WriteLine("Usage: NJTruckCharging.CloudCopy inventory-sql | bootstrap-sql | script | create-schema | copy | verify | secure | lockdown-sql | check-sql");
+            Console.Error.WriteLine("Usage: NJTruckCharging.CloudCopy inventory-sql | bootstrap-sql | script | check-login | create-schema | copy | verify | secure | lockdown-sql | check-sql");
             return 2;
     }
 }
@@ -137,6 +139,22 @@ static async Task<int> VerifyAsync()
     }
     Console.WriteLine(ok ? "VERIFIED: every table is identical." : "MISMATCH: see DIFFERENT rows above.");
     return ok ? 0 : 1;
+}
+
+/// <summary>Read-only sign-in test: proves the login, password and pooler work, and shows the role's rights in c3.</summary>
+static async Task<int> CheckLoginAsync()
+{
+    await using var t = Db.Target();
+    var info = await t.Database.SqlQueryRaw<string>("""
+        SELECT current_user::text || ' on ' || current_database()
+            || ' | schema c3: ' || CASE WHEN to_regnamespace('c3') IS NULL THEN 'missing'
+                 ELSE 'usage=' || has_schema_privilege('c3', 'USAGE') || ', create=' || has_schema_privilege('c3', 'CREATE')
+                      || ', tables=' || (SELECT count(*) FROM pg_tables WHERE schemaname = 'c3') END
+            || ' | read-only transactions=' || current_setting('default_transaction_read_only')
+            || ' | ' || split_part(version(), ' ', 2) AS "Value"
+        """).SingleAsync();
+    Console.WriteLine("Signed in: " + info);
+    return 0;
 }
 
 static async Task<int> SecureAsync()
