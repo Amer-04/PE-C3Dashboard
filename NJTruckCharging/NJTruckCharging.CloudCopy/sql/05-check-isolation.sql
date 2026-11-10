@@ -2,7 +2,8 @@
 WITH c3t AS (SELECT c.oid, c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
              WHERE n.nspname = 'c3' AND c.relkind = 'r'),
      -- Application schemas (public, private, migration_import, ...): the C3 roles must have NO access at all.
-     othert AS (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     othert AS (SELECT c.oid, n.oid AS nspoid, n.nspname || '.' || c.relname AS name
+                FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname NOT IN ('c3', 'pg_catalog', 'information_schema') AND n.nspname !~ '^pg_'
                   AND pg_get_userbyid(n.nspowner) NOT IN ('supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin')
                   AND c.relkind IN ('r', 'p', 'v', 'm')),
@@ -31,8 +32,18 @@ WITH c3t AS (SELECT c.oid, c.relname, c.relrowsecurity FROM pg_class c JOIN pg_n
   UNION ALL SELECT 'KNOWN EXCEPTION (Supabase-managed, granted to every role; not C3-specific)',
          true, coalesce(string_agg(DISTINCT m.name, ', '), 'none')
          FROM managed m WHERE has_table_privilege('c3_runtime_readonly', m.oid, 'SELECT,INSERT,UPDATE,DELETE')
-  UNION ALL SELECT 'c3 roles have no privileges on any application schema''s tables',
-         NOT coalesce(bool_or(has_table_privilege(r, o.oid, 'SELECT,INSERT,UPDATE,DELETE')), false), ''
+  -- Effective access needs BOTH a table privilege AND USAGE on the table's schema. A table privilege inside a schema
+  -- the role cannot use (e.g. a view granted to PUBLIC in a schema open only to Supabase's API roles) is unreachable:
+  -- listed in the detail for transparency, but not a failure.
+  UNION ALL SELECT 'c3 roles cannot reach any application schema''s tables (table privilege + schema USAGE)',
+         NOT coalesce(bool_or(has_schema_privilege(r, o.nspoid, 'USAGE')
+                              AND has_table_privilege(r, o.oid, 'SELECT,INSERT,UPDATE,DELETE')), false),
+         coalesce('REACHABLE: ' || string_agg(DISTINCT r || ' -> ' || o.name, ', ')
+                  FILTER (WHERE has_schema_privilege(r, o.nspoid, 'USAGE')
+                                AND has_table_privilege(r, o.oid, 'SELECT,INSERT,UPDATE,DELETE')) || '; ', '')
+         || coalesce('granted but unreachable (no schema USAGE): ' || string_agg(DISTINCT o.name, ', ')
+                  FILTER (WHERE NOT has_schema_privilege(r, o.nspoid, 'USAGE')
+                                AND has_table_privilege(r, o.oid, 'SELECT,INSERT,UPDATE,DELETE')), '')
          FROM othert o CROSS JOIN unnest(ARRAY['c3_migrator', 'c3_runtime_readonly']) AS r
   UNION ALL SELECT 'c3 roles cannot create in schema public',
          NOT (has_schema_privilege('c3_migrator', 'public', 'CREATE') OR has_schema_privilege('c3_runtime_readonly', 'public', 'CREATE')), ''
