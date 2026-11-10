@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { AuthService } from '../../core/auth.service';
 
-/** Two simple steps: enter your work e-mail, then enter the code from the e-mail. Large text, one task per screen. */
+/** One simple step: work e-mail and password (accounts are created by the administrator). Large text, clear errors. */
 @Component({
   selector: 'app-sign-in',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,33 +17,35 @@ import { AuthService } from '../../core/auth.service';
           <p>You signed in as <b>{{ auth.email() }}</b>, but this account does not have access to C3 Site Finder.
             Please ask the administrator to approve it.</p>
           <button type="button" class="btn primary si-btn" (click)="auth.signOut()">Sign out</button>
-        } @else if (step() === 'email') {
-          <h1 id="si-title">Sign in</h1>
-          <p>Enter your work e-mail address. We will e-mail you a sign-in code.</p>
-          @if (auth.notice(); as n) { <p class="si-note" role="status">{{ n }}</p> }
-          <form (submit)="send($event)">
-            <label for="si-email">Work e-mail</label>
-            <input #emailBox id="si-email" type="email" autocomplete="email" inputmode="email" required spellcheck="false"
-                   [value]="email()" (input)="email.set(val($event))" [attr.aria-describedby]="error() ? 'si-error' : null" />
-            @if (error(); as e) { <p id="si-error" class="si-error" role="alert">{{ e }}</p> }
-            <button type="submit" class="btn primary si-btn" [disabled]="busy() || !email().trim()">
-              {{ busy() ? 'Sending…' : 'Send me a code' }}
-            </button>
-          </form>
-          <p class="si-small">Only people invited by the administrator can sign in.</p>
         } @else {
-          <h1 id="si-title">Enter your code</h1>
-          <p>We sent a sign-in code to <b>{{ email() }}</b>. It may take a minute to arrive. If you do not see it, check your junk folder.</p>
-          <form (submit)="verify($event)">
-            <label for="si-code">Sign-in code</label>
-            <input #codeBox id="si-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required
-                   spellcheck="false" [value]="code()" (input)="code.set(val($event))" [attr.aria-describedby]="error() ? 'si-error' : null" />
+          <h1 id="si-title">Sign in</h1>
+          <p>Enter your work e-mail address and the password the administrator gave you.</p>
+          @if (auth.notice(); as n) { <p class="si-note" role="status">{{ n }}</p> }
+          <form (submit)="signIn($event)" novalidate>
+            <label for="si-email">Work e-mail</label>
+            <input #emailBox id="si-email" type="email" name="username" autocomplete="username" inputmode="email" required
+                   spellcheck="false" [value]="email()" (input)="email.set(val($event))"
+                   [attr.aria-invalid]="error() ? 'true' : null" [attr.aria-describedby]="error() ? 'si-error' : null" />
+
+            <label for="si-password">Password</label>
+            <div class="si-pw">
+              <input #passwordBox id="si-password" [type]="showPassword() ? 'text' : 'password'" name="password"
+                     autocomplete="current-password" required spellcheck="false" autocapitalize="off"
+                     [value]="password()" (input)="password.set(val($event))"
+                     [attr.aria-invalid]="error() ? 'true' : null" [attr.aria-describedby]="error() ? 'si-error' : null" />
+              <button type="button" class="btn si-show" (click)="showPassword.set(!showPassword())"
+                      [attr.aria-pressed]="showPassword()" aria-controls="si-password">
+                {{ showPassword() ? 'Hide' : 'Show' }}<span class="si-sr"> password</span>
+              </button>
+            </div>
+
             @if (error(); as e) { <p id="si-error" class="si-error" role="alert">{{ e }}</p> }
-            <button type="submit" class="btn primary si-btn" [disabled]="busy() || digits().length < 6">
-              {{ busy() ? 'Checking…' : 'Sign in' }}
+            <button type="submit" class="btn primary si-btn" [disabled]="busy() || !email().trim() || !password()">
+              {{ busy() ? 'Signing in…' : 'Sign in' }}
             </button>
           </form>
-          <button type="button" class="btn si-btn si-secondary" (click)="back()" [disabled]="busy()">Use a different e-mail or send a new code</button>
+          <p class="si-small">Only employees whose account the administrator created can sign in.
+            Forgot your password? Please ask the administrator.</p>
         }
       </section>
     </main>
@@ -55,14 +57,16 @@ import { AuthService } from '../../core/auth.service';
     .si-brand { font-weight: 700; font-size: 16px; color: var(--text-2); margin-bottom: 18px; }
     h1 { font-size: 26px; line-height: 1.25; margin: 0 0 12px; }
     p { font-size: 17px; line-height: 1.55; margin: 0 0 16px; }
-    label { display: block; font-size: 17px; font-weight: 600; margin: 8px 0; }
+    label { display: block; font-size: 17px; font-weight: 600; margin: 14px 0 8px; }
     input { width: 100%; box-sizing: border-box; min-height: 52px; font-size: 20px; padding: 10px 14px; border-radius: 10px;
       border: 2px solid var(--border); background: var(--surface); color: var(--text); }
     input:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; border-color: #2563eb; }
-    #si-code { letter-spacing: .2em; font-variant-numeric: tabular-nums; }
-    .si-btn { width: 100%; min-height: 52px; font-size: 18px; font-weight: 600; margin-top: 16px; border-radius: 10px; }
-    .si-secondary { font-size: 16px; }
-    .si-error { color: #b91c1c; font-weight: 600; margin: 10px 0 0; font-size: 16px; }
+    .si-pw { display: flex; gap: 8px; align-items: stretch; }
+    .si-pw input { flex: 1; min-width: 0; }
+    .si-show { min-height: 52px; min-width: 76px; font-size: 16px; font-weight: 600; border-radius: 10px; padding: 0 12px; }
+    .si-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .si-btn { width: 100%; min-height: 52px; font-size: 18px; font-weight: 600; margin-top: 18px; border-radius: 10px; }
+    .si-error { color: #b91c1c; font-weight: 600; margin: 12px 0 0; font-size: 16px; }
     .si-note { background: var(--pill-amber-bg); color: var(--pill-amber); padding: 10px 12px; border-radius: 8px; font-size: 16px; }
     .si-small { font-size: 15px; color: var(--text-2); margin: 18px 0 0; }
     :host-context([data-theme="dark"]) .si-error { color: #fca5a5; }
@@ -70,13 +74,13 @@ import { AuthService } from '../../core/auth.service';
 })
 export class SignInComponent {
   protected readonly auth = inject(AuthService);
-  protected readonly step = signal<'email' | 'code'>('email');
   protected readonly email = signal('');
-  protected readonly code = signal('');
+  protected readonly password = signal('');
+  protected readonly showPassword = signal(false);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
   private readonly emailBox = viewChild<ElementRef<HTMLInputElement>>('emailBox');
-  private readonly codeBox = viewChild<ElementRef<HTMLInputElement>>('codeBox');
+  private readonly passwordBox = viewChild<ElementRef<HTMLInputElement>>('passwordBox');
 
   constructor() {
     // Put the cursor in the e-mail box as soon as it appears (after "Loading…"), once.
@@ -87,35 +91,21 @@ export class SignInComponent {
     });
   }
 
-  protected digits(): string { return this.code().replace(/\s+/g, ''); }
   protected val(e: Event): string { return (e.target as HTMLInputElement).value; }
 
-  protected async send(e: Event) {
+  protected async signIn(e: Event) {
     e.preventDefault();
     const email = this.email().trim().toLowerCase();
-    if (!email || this.busy()) return;
+    const password = this.password();
+    if (!email || !password || this.busy()) return;
     this.busy.set(true); this.error.set(null);
-    const err = await this.auth.sendCode(email);
+    const err = await this.auth.signIn(email, password);
     this.busy.set(false);
-    if (err) { this.error.set(err); return; }
-    this.email.set(email);
-    this.code.set('');
-    this.step.set('code');
-    setTimeout(() => this.codeBox()?.nativeElement.focus());
-  }
-
-  protected async verify(e: Event) {
-    e.preventDefault();
-    const code = this.digits();
-    if (code.length < 6 || this.busy()) return;
-    this.busy.set(true); this.error.set(null);
-    const err = await this.auth.verifyCode(this.email(), code);
-    this.busy.set(false);
-    if (err) { this.error.set(err); setTimeout(() => this.codeBox()?.nativeElement.select()); }
-  }
-
-  protected back() {
-    this.step.set('email'); this.error.set(null); this.code.set('');
-    setTimeout(() => this.emailBox()?.nativeElement.focus());
+    if (err) {
+      // Never keep a rejected password around; put the cursor back in the password box.
+      this.password.set('');
+      this.error.set(err);
+      setTimeout(() => this.passwordBox()?.nativeElement.focus());
+    }
   }
 }

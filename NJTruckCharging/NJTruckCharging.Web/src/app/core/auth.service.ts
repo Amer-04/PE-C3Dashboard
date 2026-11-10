@@ -11,8 +11,9 @@ export const SUPABASE_CLIENT_FACTORY = new InjectionToken<typeof createClient>('
 export type AuthState = 'loading' | 'signed-out' | 'signed-in' | 'denied';
 
 /**
- * Supabase e-mail sign-in (one-time code). Accounts are never created here: only people the administrator invited
- * can receive a code, and the API additionally checks every request against its own allowlist of approved user ids.
+ * Supabase e-mail + password sign-in for employee accounts the administrator created. Nothing here can create an
+ * account (no sign-up call exists), no e-mail is ever sent, and the API additionally checks every request against its
+ * own allowlist of approved user ids.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -25,8 +26,9 @@ export class AuthService {
 
   private readonly client: SupabaseClient | null = this.enabled
     ? inject(SUPABASE_CLIENT_FACTORY)(this.config.supabaseUrl, this.config.supabasePublishableKey, {
-        // detectSessionInUrl: the e-mailed sign-in link (if the shared project's template sends one) returns to THIS site.
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        // Password sign-in uses no e-mailed links, so tokens in a URL are never accepted (old confirmation or magic
+        // links that land on this site are ignored).
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       })
     : null;
 
@@ -51,24 +53,13 @@ export class AuthService {
   }
 
   /**
-   * Step 1: e-mail a one-time code (and, if the project's template includes one, a sign-in link back to this site).
-   * shouldCreateUser:false — an address that was not invited never gets an account.
+   * Sign in with the e-mail and password the administrator set up. Returns null on success, otherwise a plain message.
+   * Wrong e-mail and wrong password get the same message, so the screen never reveals which accounts exist.
    */
-  async sendCode(email: string): Promise<string | null> {
+  async signIn(email: string, password: string): Promise<string | null> {
     if (!this.client) return null;
-    const { error } = await this.client.auth.signInWithOtp({
-      email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + '/' },
-    });
-    if (!error) return null;
-    if (error.status === 429) return 'Too many attempts. Please wait a few minutes and try again.';
-    return 'We could not send a code to that address. Check the spelling, or ask the administrator to invite you.';
-  }
-
-  /** Step 2: check the code from the e-mail. */
-  async verifyCode(email: string, code: string): Promise<string | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client.auth.verifyOtp({ email, token: code, type: 'email' });
-    if (error || !data.session) return 'That code did not work. Check it, or send a new code.';
+    const { data, error } = await this.client.auth.signInWithPassword({ email, password });
+    if (error || !data.session) return signInMessage(error);
     this.notice.set(null);
     this.apply(data.session);
     return null;
@@ -97,4 +88,21 @@ export class AuthService {
     this.email.set(session?.user.email ?? null);
     this.state.set(session ? 'signed-in' : 'signed-out');
   }
+}
+
+/** Plain-language message for a failed sign-in (never says whether the e-mail address exists). */
+export function signInMessage(error: { status?: number; code?: string } | null): string {
+  if (error?.status === 429 || error?.code === 'over_request_rate_limit') {
+    return 'Too many sign-in attempts. Please wait a few minutes and try again.';
+  }
+  if (error?.code === 'email_not_confirmed') {
+    return 'This account is not activated yet. Please ask the administrator to activate it.';
+  }
+  if (error?.code === 'user_banned') {
+    return 'This account is disabled. Please ask the administrator.';
+  }
+  if (error && (error.status === undefined || error.status >= 500 || error.status === 0)) {
+    return 'Sign-in is not available right now. Please try again in a few minutes.';
+  }
+  return 'The e-mail address or password is not correct.';
 }
