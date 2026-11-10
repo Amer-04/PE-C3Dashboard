@@ -9,6 +9,7 @@ WITH c3t AS (SELECT c.oid, c.relname, c.relrowsecurity FROM pg_class c JOIN pg_n
      -- Supabase-managed schemas: objects Supabase grants to every role (e.g. pg_net's net.http_request_queue).
      managed AS (SELECT n.nspname || '.' || c.relname AS name, c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE pg_get_userbyid(n.nspowner) IN ('supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin')
+                   AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_'
                    AND c.relkind IN ('r', 'p', 'v', 'm')),
      api AS (SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role', 'authenticator')),
      checks AS (
@@ -35,8 +36,15 @@ WITH c3t AS (SELECT c.oid, c.relname, c.relrowsecurity FROM pg_class c JOIN pg_n
          FROM othert o CROSS JOIN unnest(ARRAY['c3_migrator', 'c3_runtime_readonly']) AS r
   UNION ALL SELECT 'c3 roles cannot create in schema public',
          NOT (has_schema_privilege('c3_migrator', 'public', 'CREATE') OR has_schema_privilege('c3_runtime_readonly', 'public', 'CREATE')), ''
-  UNION ALL SELECT 'c3_migrator locked (no login, no CREATE on database)',
-         NOT r.rolcanlogin AND NOT has_database_privilege('c3_migrator', current_database(), 'CREATE'), ''
+  UNION ALL SELECT 'schema c3 owned by the administrator (not by a c3 role)',
+         pg_get_userbyid(n.nspowner) NOT IN ('c3_migrator', 'c3_runtime_readonly'), pg_get_userbyid(n.nspowner)
+         FROM pg_namespace n WHERE n.nspname = 'c3'
+  UNION ALL SELECT 'c3 roles cannot create schemas (no CREATE on the database)',
+         NOT (has_database_privilege('c3_migrator', current_database(), 'CREATE')
+              OR has_database_privilege('c3_runtime_readonly', current_database(), 'CREATE')), ''
+  UNION ALL SELECT 'c3_migrator locked (no login, no USAGE/CREATE on schema c3)',
+         NOT r.rolcanlogin AND NOT has_schema_privilege('c3_migrator', 'c3', 'USAGE')
+         AND NOT has_schema_privilege('c3_migrator', 'c3', 'CREATE'), ''
          FROM pg_roles r WHERE r.rolname = 'c3_migrator'
   UNION ALL SELECT 'runtime role uses read-only transactions',
          coalesce(array_to_string(r.rolconfig, ',') LIKE '%default_transaction_read_only=on%', false), array_to_string(r.rolconfig, ', ')

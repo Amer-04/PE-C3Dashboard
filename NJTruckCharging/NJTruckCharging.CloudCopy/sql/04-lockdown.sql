@@ -1,4 +1,5 @@
 -- C3 Site Finder: step 4 of 4, lock the migration role after the import. Run in the SQL Editor as postgres.
--- c3_migrator can no longer log in or create schemas; it stays the owner of c3 so it can be re-enabled for a refresh.
-DO $$ BEGIN EXECUTE format('REVOKE CREATE ON DATABASE %I FROM c3_migrator', current_database()); END $$;
+-- c3_migrator can no longer log in, create anything or even look inside schema c3. It stays the owner of the c3
+-- tables, so a later refresh only needs: ALTER ROLE c3_migrator LOGIN; GRANT USAGE, CREATE ON SCHEMA c3 TO c3_migrator;
+REVOKE ALL ON SCHEMA c3 FROM c3_migrator;
 ALTER ROLE c3_migrator NOLOGIN;
