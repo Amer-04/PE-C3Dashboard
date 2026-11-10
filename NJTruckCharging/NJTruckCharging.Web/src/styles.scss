@@ -676,7 +676,7 @@ td.biz-col { min-width: 150px; max-width: 220px; }
   --mm-drawer-shadow: -12px 0 40px rgb(0 0 0 / 55%);
 }
 
-.mm { display: grid; gap: 16px; width: 100%; max-width: 1400px; margin: 0 auto; min-width: 0; }
+.mm { display: grid; gap: 16px; width: 100%; max-width: 1100px; margin: 0 auto; min-width: 0; }
 .mm > * { min-width: 0; }
 .mm p { margin: 0; }
 .mm-muted { color: var(--text-2); }
@@ -960,6 +960,80 @@ td.biz-col { min-width: 150px; max-width: 220px; }
   .mm-tab.on { background: var(--accent-soft); border-color: var(--accent); }
 }
 
+/* ---------- Site Scoring Rules: single-column rule list (name left, points right, description, Edit Rule below) ---------- */
+.mm-hero h1 { font-size: 24px; }
+.mm-hero-sub { font-size: 15px; line-height: 1.55; color: var(--text); max-width: 680px; }
+.mm-hero-sub.mm-hero-note { font-size: 14px; color: var(--text-2); margin-top: 4px; }
+.mm-hero-top > .btn.lg, .mm-actionbar .btn { min-height: 44px; }
+.mm-tab { min-height: 44px; font-size: 14.5px; }
+.rl-toolbar { margin-bottom: 20px; }
+.mm-section-head h2 { font-size: 18px; }
+.mm-section-head p { font-size: 14px; line-height: 1.55; }
+.rl-toolbar .mm-search { max-width: 360px; }
+.rl-toolbar .mm-search input { min-height: 44px; font-size: 15px; }
+.rl-toolbar .chip { min-height: 44px; padding: 0 16px; font-size: 14px; display: inline-flex; align-items: center; }
+.rl-group { margin-bottom: 28px; }
+.rl-group:last-child { margin-bottom: 0; }
+.rl-group-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+.rl-group-head h3 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text); }
+.rl-group-head span { font-size: 14px; color: var(--text-2); }
+.rl-list { list-style: none; margin: 0; padding: 0; }
+.rl-item { display: grid; gap: 8px; padding: 20px 4px 20px 12px; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; min-width: 0; }
+.rl-item:last-child { border-bottom: 0; }
+.rl-item.changed { border-left-color: var(--warning); }
+.rl-item.error { border-left-color: var(--critical); }
+.rl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.rl-name { margin: 0; font-size: 17px; font-weight: 650; line-height: 1.35; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.rl-points { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--good-text); white-space: nowrap; }
+.rl-points.mixed { color: var(--text); }
+.rl-points.neg { color: var(--critical); }
+:root[data-theme="dark"] .rl-points.neg { color: #f87171; }
+.rl-desc { font-size: 15px; line-height: 1.6; color: var(--text); max-width: 760px; overflow-wrap: anywhere; }
+.rl-details { max-width: 760px; padding: 14px 16px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); display: grid; gap: 8px; }
+.rl-details h5 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text); }
+.rl-details h5 + * { margin-top: -2px; }
+.rl-details .rl-bands + h5 { margin-top: 6px; }
+.rl-note { font-size: 14.5px; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; }
+.rl-bands { list-style: none; margin: 0; padding: 0; }
+.rl-bands li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+.rl-bands li:last-child { border-bottom: 0; }
+.rl-when { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.rl-band-pts { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+/* Show More and Edit Rule: the same secondary button, each with a small icon. */
+.btn.rl-btn { gap: 8px; }
+.rl-icon { width: 18px; height: 18px; flex: none; }
+.rl-chev { transition: transform .15s; }
+.rl-chev.up { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .rl-chev { transition: none; } }
+.rl-issue { font-size: 14px; }
+.rl-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rl-tags .pill { font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.rl-item.off .rl-name, .rl-item.off .rl-points, .rl-item.off .rl-desc { opacity: .6; }
+.rl-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
+.btn.rl-btn, .btn-ghost.rl-btn { min-height: 44px; min-width: 44px; padding: 0 20px; font-size: 15px; font-weight: 600; justify-content: center; }
+.rl-switch { min-height: 44px; font-size: 14px; }
+@media (max-width: 640px) {
+  .mm-hero h1 { font-size: 21px; }
+  .rl-item { padding: 16px 2px 16px 10px; }
+  .rl-head { gap: 4px 12px; }
+  .rl-actions .btn.rl-btn { flex: 1 1 100%; }
+  .rl-details { padding: 12px; }
+  .rl-toolbar .mm-search { max-width: none; }
+}
+
+/* Header status: active scoring method + unapplied changes (replaces the four statistic tiles). */
+.mm-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mm-status-item { display: grid; gap: 4px; align-content: start; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--surface-2); min-width: 0; }
+.mm-status-item.pending { border-color: var(--warning); box-shadow: inset 4px 0 0 var(--warning); }
+.mm-status-value { font-size: 18px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.mm-status-note { font-size: 14px; color: var(--text-2); line-height: 1.5; }
+.mm-status-btn { justify-self: start; margin-top: 6px; }
+.mm-adv .mm-subtabs button { min-height: 44px; padding: 0 18px; font-size: 14.5px; }
+@media (max-width: 640px) {
+  .mm-status { grid-template-columns: minmax(0, 1fr); }
+  .mm-status-btn { justify-self: stretch; }
+}
+
 /* ---------- Research quality (Phase 1): evidence, history, completeness, review queue — separate from the C3 score ---------- */
 .feas-row[data-status="Conflicting"] { border-left-color: var(--warning); }
 .feas-row[data-evidence="InsufficientEvidence"] { border-left-style: dashed; }
@@ -1031,3 +1105,15 @@ td.biz-col { min-width: 150px; max-width: 220px; }
 .val-st[data-st="InsufficientEvidence"] { border: 1px dashed var(--warning); color: var(--warning); }
 .suit-basis[data-b="InsufficientEvidence"] { border: 1px dashed var(--warning); color: var(--warning); }
 .suit-basis[data-b="Conflicting"] { border: 1px solid var(--critical); color: var(--critical); }
+
+/* Site Scoring Rules pages: every button and search box is at least 44px tall (readable, easy to tap). */
+.mm .btn, .mm a.btn, .mm .btn-ghost, .mm .mm-search input, .mm .mm-subtabs button, .mm input.title { min-height: 44px; }
+.mm .btn.small { font-size: 14px; padding-left: 14px; padding-right: 14px; }
+
+/* Contrast (WCAG AA 4.5:1): status-panel text on the grey panel, and category counts in the filter chips. */
+.mm-status-note, .mm-status-item .mm-stat-label { color: #475569; }
+:root[data-theme="dark"] .mm-status-note, :root[data-theme="dark"] .mm-status-item .mm-stat-label { color: var(--text-2); }
+.rl-toolbar .chip .n { opacity: 1; font-weight: 600; }
+/* Dark mode: white text on the lighter dark-theme blue is only 3.6:1 — use a deeper blue for filled buttons and the selected chip. */
+:root[data-theme="dark"] .mm .btn.primary, :root[data-theme="dark"] .mm .chip.on,
+:root[data-theme="dark"] .mm .btn.primary:hover { background: #2563eb; border-color: #2563eb; color: #fff; }

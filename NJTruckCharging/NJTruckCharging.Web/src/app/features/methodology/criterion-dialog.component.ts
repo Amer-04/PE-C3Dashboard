@@ -30,7 +30,7 @@ type Style = 'points' | 'percentile' | 'linear';
       <header class="mm-drawer-head">
         <div class="row">
           <div>
-            <h2 id="crit-dlg-title">{{ mode() === 'add' ? 'Add new criterion' : 'Edit criterion' }}</h2>
+            <h2 id="crit-dlg-title">{{ mode() === 'add' ? 'Add rule' : 'Edit rule' }}</h2>
             <p>{{ mode() === 'add' ? stepIntro() : (criterion()?.name ?? '') + ' · changes go into the draft, not live scoring' }}</p>
           </div>
           <button type="button" class="icon-btn" aria-label="Close" (click)="cancel.emit()">✕</button>
@@ -48,7 +48,7 @@ type Style = 'points' | 'percentile' | 'linear';
         <!-- ===== Add · step 1: data field ===== -->
         @if (mode() === 'add' && step() === 1) {
           <section class="mm-block" aria-labelledby="pick-title">
-            <h3 id="pick-title">Which data should this criterion score?</h3>
+            <h3 id="pick-title">Which data should this rule score?</h3>
             <label class="mm-search wide">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="9" r="6" /><path d="m14 14 4 4" /></svg>
               <input type="search" placeholder="Search data fields" aria-label="Search data fields" [value]="fieldQuery()" (input)="fieldQuery.set(val($event))" />
@@ -72,7 +72,7 @@ type Style = 'points' | 'percentile' | 'linear';
             <button type="button" class="mm-custom-opt" [class.on]="fieldKey() === '__custom__'" (click)="pickField('__custom__')"
                     [attr.aria-pressed]="fieldKey() === '__custom__'">
               <span class="ico" aria-hidden="true">＋</span>
-              <span><b>Other — Custom Criterion</b><span class="d">Create a new typed data field (number, yes/no or category) entered per site or imported from a dataset.</span></span>
+              <span><b>Other — Custom Rule</b><span class="d">Create a new typed data field (number, yes/no or category) entered per site or imported from a dataset.</span></span>
             </button>
           </section>
 
@@ -121,7 +121,7 @@ type Style = 'points' | 'percentile' | 'linear';
                 </label>
               }
               @if (cfError()) { <p class="mm-note bad" role="alert">{{ cfError() }}</p> }
-              <p class="mm-xs mm-muted">Creating the field adds no values and changes no score until a criterion that uses it is published.</p>
+              <p class="mm-xs mm-muted">Creating the field adds no values and changes no score until a rule that uses it has scoring applied.</p>
             </section>
           }
 
@@ -189,7 +189,7 @@ type Style = 'points' | 'percentile' | 'linear';
       </div>
 
       <footer class="mm-drawer-foot">
-        <span class="hint">Changes go into the draft. Save the draft, preview all sites, then publish.</span>
+        <span class="hint">Changes go into the draft. Save the draft, review results for all sites, then apply scoring.</span>
         @if (mode() === 'add' && step() > 1) { <button type="button" class="btn" (click)="back()">← Back</button> }
         <button type="button" class="btn-ghost" (click)="cancel.emit()">Cancel</button>
         @if (mode() === 'add' && step() === 1 && fieldKey() === '__custom__') {
@@ -260,7 +260,7 @@ export class CriterionDialogComponent {
     && !!this.working()!.name.trim());
   protected readonly explanation = computed(() => { const c = this.working(); return c ? explainCriterion(c, this.fields()) : ''; });
   protected readonly range = computed(() => { const c = this.working(); return c ? criterionRange(c) : [0, 0]; });
-  protected readonly stepIntro = computed(() => ['Choose the data this criterion will score.', 'Choose how the data earns points.',
+  protected readonly stepIntro = computed(() => ['Choose the data this rule will score.', 'Choose how the data earns points.',
     'Set the points, conditions and what happens when data is missing.'][this.step() - 1]);
 
   constructor() {

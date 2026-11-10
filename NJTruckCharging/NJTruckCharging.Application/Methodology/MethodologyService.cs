@@ -326,9 +326,9 @@ public sealed class MethodologyService(
         return stored switch
         {
             ActivationFailure.None => MethodologyOutcome<PreviewSummaryDto>.Ok(summary with { ElapsedMs = sw.ElapsedMilliseconds }),
-            ActivationFailure.ConcurrentOperation => MethodologyOutcome<PreviewSummaryDto>.Fail(MethodologyError.Conflict, "Another publish, preview or import is running. Try again shortly."),
+            ActivationFailure.ConcurrentOperation => MethodologyOutcome<PreviewSummaryDto>.Fail(MethodologyError.Conflict, "Another scoring change, results review or import is running. Try again shortly."),
             ActivationFailure.NotFound => MethodologyOutcome<PreviewSummaryDto>.Fail(MethodologyError.NotFound, "Version not found."),
-            _ => MethodologyOutcome<PreviewSummaryDto>.Fail(MethodologyError.Conflict, "The rules or the data changed while the preview ran. Run the preview again.")
+            _ => MethodologyOutcome<PreviewSummaryDto>.Fail(MethodologyError.Conflict, "The rules or the data changed while the results were being reviewed. Review Results again.")
         };
     }
 
@@ -339,9 +339,9 @@ public sealed class MethodologyService(
     public async Task<MethodologyOutcome<PublishResultDto>> PublishAsync(int id, PublishRequest req, CancellationToken ct = default)
     {
         if (!req.Confirm)
-            return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "Publishing recalculates every site; explicit confirmation is required.");
+            return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "Applying scoring recalculates every site; explicit confirmation is required.");
         if (req.ExpectedActiveVersionId is null || string.IsNullOrWhiteSpace(req.RulesHash))
-            return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "expectedActiveVersionId and rulesHash (from the preview) are required.");
+            return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "expectedActiveVersionId and rulesHash (from the reviewed results) are required.");
         if ((req.Note ?? "").Length > 1000)
             return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "Note is limited to 1,000 characters.");
 

@@ -26,8 +26,8 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mm">
-      <nav class="crumbs" aria-label="Breadcrumb"><a routerLink="/methodology">Scoring Methodology</a> <span aria-hidden="true">›</span>
-        <a routerLink="/methodology" [queryParams]="{ tab: 'history' }">Versions</a> <span aria-hidden="true">›</span>
+      <nav class="crumbs" aria-label="Breadcrumb"><a routerLink="/methodology">Site Scoring Rules</a> <span aria-hidden="true">›</span>
+        <a routerLink="/methodology" [queryParams]="{ tab: 'history' }">Previous Methods</a> <span aria-hidden="true">›</span>
         <span>v{{ id() }}</span></nav>
 
       @if (detail(); as d) {
@@ -55,7 +55,7 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
           </div>
 
           @if (editable()) {
-            <label class="mm-input"><span>Change summary <span class="help">— shown in the version history</span></span>
+            <label class="mm-input"><span>Change summary <span class="help">— shown in Previous Methods</span></span>
               <textarea rows="2" maxlength="4000" [value]="summary()" (input)="summary.set(val($event))" aria-label="Change summary"
                         placeholder="What changed and why, e.g. “Raise the open-land threshold to 4 acres”"></textarea>
             </label>
@@ -68,15 +68,15 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
           } @else {
             @if (d.version.changeSummary) { <p class="mm-muted">{{ d.version.changeSummary }}</p> }
             <p class="mm-note">
-              @if (d.version.isActive) { This version is live — every dashboard view shows its scores. Published versions never change: use <b>Edit</b> on a criterion to start a draft based on it. }
-              @else { Published versions never change. Use <b>Edit</b> to start a draft based on this version, or <b>Preview</b> then <b>Restore</b> to make it live again. }
+              @if (d.version.isActive) { This scoring method is live — every dashboard view shows its scores. Applied methods never change: use <b>Edit Rule</b> on a rule to start a draft based on it. }
+              @else { Applied methods never change. Use <b>Edit Rule</b> to start a draft based on this method, or <b>Review Results</b> then <b>Restore</b> to make it live again. }
             </p>
           }
         </section>
 
         <!-- ===== Sticky actions ===== -->
         <div class="mm-actionbar" role="toolbar" aria-label="Draft actions">
-          <button type="button" class="btn" (click)="openAdd()" [disabled]="!!busy()">＋ Add new criterion</button>
+          <button type="button" class="btn" (click)="openAdd()" [disabled]="!!busy()">＋ Add Rule</button>
           @if (editable()) {
             <button type="button" class="btn primary" [disabled]="!dirty() || !!busy() || !valid()" (click)="save()">
               {{ busy() === 'save' ? 'Saving…' : dirty() ? 'Save methodology as draft' : 'Draft saved ✓' }}
@@ -85,12 +85,12 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
           @if (!d.version.isActive) {
             <button type="button" class="btn" [class.primary]="!editable() || (!dirty() && !previewShown())" [disabled]="dirty() || !!busy() || !valid()" (click)="runPreview()"
                     [title]="dirty() ? 'Save the draft first' : 'Recalculate proposed scores and ranks for every site'">
-              {{ busy() === 'preview' ? 'Recalculating all sites…' : 'Preview scores & rankings' }}
+              {{ busy() === 'preview' ? 'Recalculating all sites…' : 'Review Results' }}
             </button>
             <label class="topn mm-xs">Top <input type="number" min="1" max="50" [value]="topN()" (change)="topN.set(+val($event) || 10)" aria-label="Top N per segment" /> per segment</label>
             <button type="button" class="btn primary" [disabled]="!publishable()" (click)="dialog.set(true)"
-                    [title]="publishable() ? '' : 'Run a preview of the saved rules first'">
-              {{ d.version.status === 'Published' ? 'Restore this version…' : 'Publish…' }}
+                    [title]="publishable() ? '' : 'Review the results of the saved rules first'">
+              {{ d.version.status === 'Published' ? 'Restore this version…' : 'Apply Scoring…' }}
             </button>
           }
           <span class="grow"></span>
@@ -124,9 +124,9 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
         <section class="panel">
           <div class="mm-section-head">
             <div>
-              <h2>Scoring criteria</h2>
-              <p>{{ editable() ? 'Edit opens a side panel; switches turn criteria on or off in this draft. Nothing is recalculated until you preview.'
-                                : 'Read-only. Edit opens a working draft based on this version.' }}</p>
+              <h2>Scoring rules</h2>
+              <p>{{ editable() ? 'Edit Rule opens a side panel; switches turn rules on or off in this draft. Nothing is recalculated until you review results.'
+                                : 'Read-only. Edit Rule opens a working draft based on this version.' }}</p>
             </div>
           </div>
           <app-criteria-board [items]="cards()" [editable]="editable()" [busy]="!!busy()" [changedKeys]="changedKeys()" [issues]="issuesByKey()"
@@ -138,10 +138,10 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
           @if (previewShown()) {
             <app-preview-panel [preview]="p" />
           } @else if (p.rulesHash !== d.version.rulesHash) {
-            <p class="mm-note warn">The saved preview was computed for earlier rules. Run the preview again.</p>
+            <p class="mm-note warn">These results were reviewed for earlier rules. Select <b>Review Results</b> again before applying scoring.</p>
           } @else {
-            <p class="mm-note warn">The saved preview compared these rules with v{{ p.comparedToVersionId }}, but v{{ store.versionId() }} is active now.
-              Run the preview again to compare with the current scores.</p>
+            <p class="mm-note warn">These results were compared with version {{ p.comparedToVersionId }}, but version {{ store.versionId() }} is active now.
+              Select <b>Review Results</b> again to compare with the current scores.</p>
           }
         }
         @if (dialog() && preview(); as p) {
@@ -245,10 +245,10 @@ export class MethodologyEditorPage {
     type S = 'done' | 'current' | 'todo';
     const st = (done: boolean, current: boolean): S => (done ? 'done' : current ? 'current' : 'todo');
     return [
-      { n: 1, title: 'Edit criteria', note: changed ? 'Changes made' : 'Edit or add criteria', state: st(changed, !changed) },
+      { n: 1, title: 'Edit rules', note: changed ? 'Changes made' : 'Edit or add rules', state: st(changed, !changed) },
       { n: 2, title: 'Save draft', note: this.dirty() ? 'Unsaved changes' : saved ? 'Saved' : 'Nothing to save yet', state: st(saved, this.dirty()) },
-      { n: 3, title: `Preview ${this.sitesLabel()} sites`, note: previewed ? 'Up to date' : 'Recalculate scores & ranks', state: st(previewed, saved && !previewed) },
-      { n: 4, title: 'Confirm & publish', note: 'Typed confirmation', state: st(false, this.publishable()) },
+      { n: 3, title: `Review Results (${this.sitesLabel()} sites)`, note: previewed ? 'Up to date' : 'Recalculate scores & ranks', state: st(previewed, saved && !previewed) },
+      { n: 4, title: 'Apply Scoring', note: 'Typed confirmation', state: st(false, this.publishable()) },
     ];
   });
 

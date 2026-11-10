@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 import { ValidationIssue } from '../../core/methodology.models';
+import { ScoringBreakdown, scoringBreakdown } from './criterion-text';
 
 /** What a criterion card shows — built from the active methodology's views or from a draft's (unsaved) rules. */
 export interface CriterionCardItem {
@@ -17,26 +17,31 @@ export interface CriterionCardItem {
   rule: string;
   /** Short missing-data policy ("−10 pts") when the criterion reads data that is missing for some sites. */
   missingPolicy: string | null;
+  /**
+   * Exact plain-language scoring built from the structured rule (see explainScoring). When absent (rules not loaded yet),
+   * the details fall back to splitting {@link rule} into rows.
+   */
+  breakdown?: ScoringBreakdown | null;
 }
 
 const CATEGORY_ORDER = ['Access', 'Site', 'Truck demand', 'Charger gap', 'Bonus', 'Penalty'];
 
 /**
- * Compact criterion cards grouped by category, with a text search and category filters. Purely presentational:
+ * A single-column list of scoring rules grouped by category, with a text search and category filters. Purely presentational:
  * Edit / enable-disable / remove are emitted to the parent, which decides what they mean (on the overview Edit opens the
  * working draft; in a draft it opens the side drawer). Nothing here changes scoring.
  */
 @Component({
   selector: 'app-criteria-board',
-  imports: [DecimalPipe],
+  imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="mm-toolbar">
+    <div class="mm-toolbar rl-toolbar">
       <label class="mm-search">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="9" r="6" /><path d="m14 14 4 4" /></svg>
-        <input type="search" placeholder="Search criteria" aria-label="Search criteria" [value]="query()" (input)="query.set(val($event))" />
+        <input type="search" placeholder="Search rules" aria-label="Search rules" [value]="query()" (input)="query.set(val($event))" />
       </label>
-      <div class="chips" role="group" aria-label="Filter by category">
+      <div class="chips" role="group" aria-label="Show one category">
         <button type="button" class="chip" [class.on]="!category()" [attr.aria-pressed]="!category()" (click)="category.set(null)">
           All<span class="n">{{ items().length }}</span></button>
         @for (g of categoryCounts(); track g.name) {
@@ -47,51 +52,75 @@ const CATEGORY_ORDER = ['Access', 'Site', 'Truck demand', 'Charger gap', 'Bonus'
     </div>
 
     @for (g of groups(); track g.name) {
-      <section class="mm-group" [attr.aria-label]="g.name + ' criteria'">
-        <div class="mm-group-head">
+      <section class="rl-group" [attr.aria-label]="g.name + ' rules'">
+        <div class="rl-group-head">
           <h3>{{ g.name }}</h3>
-          <span>{{ g.items.length }} {{ g.items.length === 1 ? 'criterion' : 'criteria' }} · {{ g.enabledMin | number: '1.0-1' }} … {{ g.enabledMax | number: '1.0-1' }} pts when on</span>
+          <span>{{ g.items.length }} {{ g.items.length === 1 ? 'rule' : 'rules' }}</span>
         </div>
-        <div class="mm-cards">
+        <ul class="rl-list">
           @for (c of g.items; track c.key) {
             @let iss = issuesFor(c.key);
-            <article class="mm-card" [class.off]="!c.enabled" [class.changed]="isChanged(c.key)" [class.error]="hasError(c.key)"
-                     [attr.data-key]="c.key" [attr.aria-label]="c.name">
-              <div class="mm-card-top">
-                <div class="mm-card-title">{{ c.name }}</div>
-                <span class="mm-points" [class.neg]="c.max <= 0" [class.mixed]="c.min < 0 && c.max > 0"
-                      [title]="'Lowest and highest points: ' + c.min + ' to ' + c.max">{{ fmt(c.min) }} … {{ fmt(c.max) }} pts</span>
+            <li class="rl-item" [class.off]="!c.enabled" [class.changed]="isChanged(c.key)" [class.error]="hasError(c.key)"
+                [attr.data-key]="c.key">
+              <div class="rl-head">
+                <h4 class="rl-name">{{ c.name }}</h4>
+                <span class="rl-points" [class.neg]="c.max <= 0" [class.mixed]="c.min < 0 && c.max > 0"
+                      [attr.aria-label]="'Points: ' + points(c)">{{ points(c) }}</span>
               </div>
-              @if (c.explanation) { <p class="mm-card-text" [title]="c.explanation">{{ c.explanation }}</p> }
-              <p class="mm-card-rule" [title]="c.rule">{{ c.rule }}</p>
-              @for (e of iss; track $index) {
-                <p class="mm-card-issue" [class.warn]="e.severity === 'Warning'">{{ e.severity === 'Error' ? '✕' : '⚠' }} {{ e.message }}</p>
+              @if (c.explanation) { <p class="rl-desc">{{ c.explanation }}</p> }
+              @if (isOpen(c.key)) {
+                @let b = details(c);
+                <div class="rl-details" [id]="detailsId(c.key)" role="region" [attr.aria-label]="'How points are calculated: ' + c.name">
+                  <h5>How points are calculated</h5>
+                  @if (b.intro) { <p class="rl-note">{{ b.intro }}</p> }
+                  <ul class="rl-bands">
+                    @for (r of b.rows; track $index) {
+                      <li><span class="rl-when">{{ r.when }}</span>@if (r.points) { <span class="rl-band-pts">{{ r.points }}</span> }</li>
+                    }
+                  </ul>
+                  @for (n of b.notes; track $index) { <p class="rl-note">{{ n }}</p> }
+                  @if (b.missing) {
+                    <h5>When data is missing</h5>
+                    <p class="rl-note">{{ b.missing }}</p>
+                  }
+                </div>
               }
-              <div class="mm-card-foot">
+              @for (e of iss; track $index) {
+                <p class="mm-card-issue rl-issue" [class.warn]="e.severity === 'Warning'">{{ e.severity === 'Error' ? '✕' : '⚠' }} {{ e.message }}</p>
+              }
+              @if ((!c.enabled && !editable()) || !c.builtIn || isChanged(c.key)) {
+                <div class="rl-tags">
+                  @if (!c.enabled && !editable()) { <span class="pill">Turned off</span> }
+                  @if (!c.builtIn) { <span class="pill amber" title="Not part of the original workbook methodology">Added rule</span> }
+                  @if (isChanged(c.key)) { <span class="pill amber">Unsaved change</span> }
+                </div>
+              }
+              <div class="rl-actions">
+                <button type="button" class="btn rl-btn rl-more" [attr.aria-expanded]="isOpen(c.key)" [attr.aria-controls]="isOpen(c.key) ? detailsId(c.key) : null"
+                        [attr.aria-label]="(isOpen(c.key) ? 'Show Less: ' : 'Show More: ') + c.name" (click)="toggleOpen(c.key)">
+                  {{ isOpen(c.key) ? 'Show Less' : 'Show More' }}
+                  <svg class="rl-icon rl-chev" [class.up]="isOpen(c.key)" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg>
+                </button>
+                <button type="button" class="btn rl-btn rl-edit" [disabled]="busy()" (click)="edit.emit(c.key)" [attr.aria-label]="'Edit Rule: ' + c.name">
+                  <svg class="rl-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13.5 3.5l3 3L7 16H4v-3z" /></svg>
+                  Edit Rule</button>
                 @if (editable()) {
-                  <label class="mm-switch" [title]="c.enabled ? 'Turn this criterion off in the draft' : 'Turn this criterion on in the draft'">
-                    <input type="checkbox" [checked]="c.enabled" (change)="toggle.emit(c.key)" [attr.aria-label]="(c.enabled ? 'Disable ' : 'Enable ') + c.name" />
+                  <label class="mm-switch rl-switch" [title]="c.enabled ? 'Turn this rule off in the draft' : 'Turn this rule on in the draft'">
+                    <input type="checkbox" [checked]="c.enabled" (change)="toggle.emit(c.key)" [attr.aria-label]="(c.enabled ? 'Turn off ' : 'Turn on ') + c.name" />
                     <span class="track"></span>{{ c.enabled ? 'On' : 'Off' }}
                   </label>
-                } @else {
-                  <span class="pill" [class.green]="c.enabled"><span class="dot"></span>{{ c.enabled ? 'Enabled' : 'Disabled' }}</span>
+                  @if (!c.builtIn) {
+                    <button type="button" class="btn-ghost rl-btn mm-danger" (click)="remove.emit(c.key)" [attr.aria-label]="'Remove ' + c.name">Remove</button>
+                  }
                 }
-                @if (!c.builtIn) { <span class="pill amber" title="Not part of the original workbook methodology">Added</span> }
-                @if (c.missingPolicy) { <span class="pill" [title]="'Sites without data get ' + c.missingPolicy + ' — values are never estimated'">No data → {{ c.missingPolicy }}</span> }
-                @if (isChanged(c.key)) { <span class="pill amber">Unsaved</span> }
-                <span class="spacer"></span>
-                @if (editable() && !c.builtIn) {
-                  <button type="button" class="btn-ghost small mm-danger" (click)="remove.emit(c.key)" [attr.aria-label]="'Remove ' + c.name">Remove</button>
-                }
-                <button type="button" class="btn small" [disabled]="busy()" (click)="edit.emit(c.key)" [attr.aria-label]="'Edit ' + c.name">Edit</button>
               </div>
-            </article>
+            </li>
           }
-        </div>
+        </ul>
       </section>
     } @empty {
-      <div class="mm-empty"><b>No criteria match</b>Try a different search or category.
-        <button type="button" class="btn small" (click)="query.set(''); category.set(null)">Clear filters</button></div>
+      <div class="mm-empty"><b>No rules match</b>Try a different search or category.
+        <button type="button" class="btn rl-btn" (click)="query.set(''); category.set(null)">Clear filters</button></div>
     }
   `,
 })
@@ -121,15 +150,28 @@ export class CriteriaBoardComponent {
     const hit = (c: CriterionCardItem) => !q || [c.name, c.explanation, c.rule, c.category].some(t => t.toLowerCase().includes(q));
     const map = new Map<string, CriterionCardItem[]>();
     for (const c of this.items()) if ((!cat || c.category === cat) && hit(c)) map.set(c.category, [...(map.get(c.category) ?? []), c]);
-    return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([name, items]) => {
-      const on = items.filter(x => x.enabled);
-      return { name, items, enabledMin: on.reduce((t, x) => t + x.min, 0), enabledMax: on.reduce((t, x) => t + x.max, 0) };
-    });
+    return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([name, items]) => ({ name, items }));
   });
+
+  /** Rules whose scoring details are shown; each expands independently. */
+  protected readonly open = signal<ReadonlySet<string>>(new Set());
+  protected isOpen(key: string) { return this.open().has(key); }
+  protected toggleOpen(key: string) {
+    const next = new Set(this.open());
+    if (!next.delete(key)) next.add(key);
+    this.open.set(next);
+  }
+  protected detailsId(key: string) { return 'rl-details-' + key; }
+  protected details(c: CriterionCardItem) { return c.breakdown ?? scoringBreakdown(c.rule); }
 
   protected issuesFor(key: string) { return this.issues()[key] ?? []; }
   protected hasError(key: string) { return this.issuesFor(key).some(i => i.severity === 'Error'); }
   protected isChanged(key: string) { return this.changedKeys().includes(key); }
+  /** "+20 pts", "0 to +20 pts", "−15 to +20 pts" — plain words instead of symbols. */
+  protected points(c: CriterionCardItem) {
+    const f = (v: number) => (v > 0 ? '+' : '') + this.fmt(v);
+    return c.min === c.max ? `${f(c.max)} pts` : `${f(c.min)} to ${f(c.max)} pts`;
+  }
   protected fmt(v: number) { return (v < 0 ? '−' : '') + Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
   protected val(e: Event) { return (e.target as HTMLInputElement).value; }
 }

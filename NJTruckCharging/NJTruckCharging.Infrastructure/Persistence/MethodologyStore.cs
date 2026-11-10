@@ -109,19 +109,19 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
                 db.ChangeTracker.Clear();
                 await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
                 if (!await ScoringLock.TryAcquireAsync(db, ct))
-                    return Fail(ActivationFailure.ConcurrentOperation, "Another methodology publish, preview or import is running. Try again shortly.");
+                    return Fail(ActivationFailure.ConcurrentOperation, "Another scoring change, results review or import is running. Try again shortly.");
 
                 var state = await db.MethodologyState.FirstAsync(s => s.Id == 1, ct);
                 if (cmd.ExpectedActiveVersionId is { } expected && state.ActiveVersionId != expected)
                     return Fail(ActivationFailure.ActiveVersionChanged,
-                        $"The active methodology changed (now version {state.ActiveVersionId}). Re-run the preview against it.");
+                        $"The active scoring method changed (now version {state.ActiveVersionId}). Review Results again before applying scoring.");
 
                 var version = await db.MethodologyVersions.FirstOrDefaultAsync(v => v.Id == cmd.VersionId, ct);
                 if (version is null) return Fail(ActivationFailure.NotFound, "Version not found.");
                 if (version.RulesHash != cmd.ExpectedRulesHash || version.PreviewRulesHash != version.RulesHash)
-                    return Fail(ActivationFailure.PreviewStale, "The rules changed since the preview. Preview again before publishing.");
+                    return Fail(ActivationFailure.PreviewStale, "The rules changed after the results were reviewed. Review Results again before applying scoring.");
                 if (version.ScoresDataVersion != state.DataVersion)
-                    return Fail(ActivationFailure.PreviewStale, "The candidate data changed (workbook re-import) since the preview. Preview again.");
+                    return Fail(ActivationFailure.PreviewStale, "The candidate site data changed (workbook re-import) after the results were reviewed. Review Results again.");
 
                 var siteCount = await db.CandidateSites.CountAsync(ct);
                 var scoreCount = await db.SiteVersionScores.CountAsync(s => s.MethodologyVersionId == version.Id, ct);
@@ -129,7 +129,7 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
                     !db.SiteVersionScores.Any(s => s.MethodologyVersionId == version.Id && s.SiteId == c.SiteId), ct);
                 if (scoreCount != siteCount || uncovered != 0)
                     return Fail(ActivationFailure.ScoresIncomplete,
-                        $"Proposed scores cover {siteCount - uncovered:N0} of {siteCount:N0} sites ({scoreCount:N0} rows). Preview again.");
+                        $"Proposed scores cover {siteCount - uncovered:N0} of {siteCount:N0} sites ({scoreCount:N0} rows). Review Results again.");
 
                 var updated = await MaterializeAsync(db, version.Id, ct);
                 if (updated != siteCount)
@@ -155,7 +155,7 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
         }
         catch (DbUpdateConcurrencyException)
         {
-            return Fail(ActivationFailure.ActiveVersionChanged, "The active methodology was changed concurrently. Re-run the preview.");
+            return Fail(ActivationFailure.ActiveVersionChanged, "The active scoring method was changed at the same time by someone else. Review Results again.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

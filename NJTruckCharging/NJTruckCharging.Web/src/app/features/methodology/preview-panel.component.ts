@@ -15,9 +15,9 @@ type View = 'overview' | 'segments' | 'criteria' | 'rankings';
     <section class="panel preview" aria-labelledby="pv-title">
       <div class="mm-section-head">
         <div>
-          <h3 id="pv-title">Preview: “{{ p.versionName }}” vs active “{{ p.comparedToName }}” (v{{ p.comparedToVersionId }})</h3>
+          <h3 id="pv-title">Review results: “{{ p.versionName }}” vs active “{{ p.comparedToName }}” (v{{ p.comparedToVersionId }})</h3>
           <p>Recalculated {{ p.sites | number }} sites and re-ranked every segment in {{ p.elapsedMs | number }} ms
-            · {{ p.computedAtUtc | date: 'medium' }}. <b>Live scores are unchanged until you publish.</b></p>
+            · {{ p.computedAtUtc | date: 'medium' }}. <b>Live scores are unchanged until you apply scoring.</b></p>
         </div>
       </div>
       @if (p.identicalToActive) { <p class="mm-note good">These rules are identical to the active methodology — publishing would change nothing.</p> }
@@ -82,7 +82,7 @@ type View = 'overview' | 'segments' | 'criteria' | 'rankings';
           </div>
         }
         @case ('criteria') {
-          <h4>Criteria impact (proposed)</h4>
+          <h4>Rule impact (proposed)</h4>
           <div class="scroll">
             <table class="mini">
               <thead><tr><th>Criterion</th><th class="num">Avg pts</th><th class="num">Min</th><th class="num">Max</th><th class="num">Sites earning ≠ 0</th><th>Missing data</th></tr></thead>
@@ -171,7 +171,7 @@ export class PreviewPanelComponent {
   readonly preview = input.required<PreviewSummary>();
 
   protected readonly views: { id: View; label: string }[] = [
-    { id: 'overview', label: 'Overview' }, { id: 'segments', label: 'By segment' }, { id: 'criteria', label: 'Criteria impact' }, { id: 'rankings', label: 'All site rankings' },
+    { id: 'overview', label: 'Overview' }, { id: 'segments', label: 'By segment' }, { id: 'criteria', label: 'Rule impact' }, { id: 'rankings', label: 'All site rankings' },
   ];
   protected readonly view = signal<View>('overview');
   protected readonly segment = signal<number | null>(null);

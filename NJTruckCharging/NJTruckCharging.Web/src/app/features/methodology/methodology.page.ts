@@ -6,12 +6,15 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { ApiService } from '../../core/api.service';
 import { SiteStore } from '../../core/site-store';
 import { MethodologyStore } from '../../core/methodology-store';
-import { Activation, ScoringFieldInfo, VersionDetail, VersionSummary } from '../../core/methodology.models';
+import { Activation, Criterion, ScoringFieldInfo, VersionDetail, VersionSummary } from '../../core/methodology.models';
+import { explainScoring } from './criterion-text';
 import { problem } from './publish-dialog.component';
 import { CustomFieldsPanelComponent } from './custom-fields-panel.component';
 import { CriteriaBoardComponent, CriterionCardItem } from './criteria-board.component';
 
 type Tab = 'criteria' | 'draft' | 'history' | 'fields' | 'reference';
+/** Top-level navigation: Data Fields and Reference live under Advanced Options (their ?tab= links still work). */
+type Primary = 'criteria' | 'draft' | 'history' | 'advanced';
 const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
 
 /**
@@ -30,57 +33,63 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
       <section class="panel mm-hero" aria-labelledby="mm-title">
         <div class="mm-hero-top">
           <div>
-            <h1 id="mm-title">Scoring Methodology</h1>
-            <p class="mm-hero-sub">The rules that give every candidate site its C3 score and rank. Changes are made in a draft,
-              previewed on every site and only go live after you confirm.</p>
+            <h1 id="mm-title">Site Scoring Rules</h1>
+            <p class="mm-hero-sub">These rules determine how potential truck charging locations are evaluated and ranked.</p>
           </div>
           <button type="button" class="btn primary lg" (click)="addCriterion()" [disabled]="busy()">
-            <span aria-hidden="true">＋</span> Add New Criterion</button>
+            <span aria-hidden="true">＋</span> Add Rule</button>
         </div>
         @if (error()) { <p class="mm-note bad" role="alert">{{ error() }}</p> }
 
-        <div class="mm-stats">
-          <div class="mm-stat">
-            <div class="mm-stat-label">Active version</div>
+        <div class="mm-status">
+          <div class="mm-status-item">
+            <div class="mm-stat-label">Active scoring method</div>
             @if (methodology.active(); as a) {
-              <div class="mm-stat-value" [title]="a.version.name">v{{ a.version.id }} · {{ a.version.isBaseline || a.version.identicalToBaseline ? 'Original' : 'Custom' }}</div>
-              <div class="mm-stat-note" [title]="a.version.name">{{ a.version.name }}</div>
-            } @else { <div class="mm-stat-value mm-faint">…</div> }
+              <div class="mm-status-value">{{ a.version.name }}</div>
+              <div class="mm-status-note">Version {{ a.version.id }} · {{ enabledCount() }} of {{ criteriaCount() }} rules turned on</div>
+            } @else { <div class="mm-status-value mm-faint">Loading…</div> }
           </div>
-          <div class="mm-stat">
-            <div class="mm-stat-label">Enabled criteria</div>
-            <div class="mm-stat-value">{{ enabledCount() }} <span class="mm-faint mm-xs">of {{ criteriaCount() }}</span></div>
-            @if (methodology.active(); as a) { <div class="mm-stat-note">Possible total {{ a.minPossible | number: '1.0-1' }} … {{ a.maxPossible | number: '1.0-1' }} pts</div> }
-          </div>
-          <div class="mm-stat">
-            <div class="mm-stat-label">Candidate sites</div>
-            <div class="mm-stat-value">{{ totalSites() ? (totalSites() | number) : '…' }}</div>
-            <div class="mm-stat-note">Scored &amp; ranked in 6 NOFA segments</div>
-          </div>
-          <div class="mm-stat">
-            <div class="mm-stat-label">Draft status</div>
+          <div class="mm-status-item" [class.pending]="!!openDraft()">
+            <div class="mm-stat-label">Unapplied changes</div>
             @if (openDraft(); as d) {
-              <div class="mm-stat-value">{{ d.previewCurrent ? 'Previewed' : 'In progress' }}</div>
-              <div class="mm-stat-note"><a [routerLink]="['/methodology/versions', d.id]">v{{ d.id }} · {{ d.name }}</a></div>
+              <div class="mm-status-value">Draft in progress</div>
+              <div class="mm-status-note">{{ d.previewCurrent ? 'Results reviewed — ready to apply.' : 'Results not reviewed yet.' }}
+                </div>
+              <button type="button" class="btn rl-btn mm-status-btn" (click)="go('draft')">Review Changes</button>
             } @else {
-              <div class="mm-stat-value">No draft</div>
-              <div class="mm-stat-note">Live scoring is unchanged</div>
+              <div class="mm-status-value">None</div>
+              <div class="mm-status-note">Live scores match the active scoring method.</div>
             }
           </div>
         </div>
 
-        <nav class="mm-tabs" role="tablist" aria-label="Methodology sections">
+        <nav class="mm-tabs" role="tablist" aria-label="Scoring rules sections">
           @for (t of tabs; track t.id) {
-            <button type="button" role="tab" class="mm-tab" [class.on]="tab() === t.id" [attr.aria-selected]="tab() === t.id"
+            <button type="button" role="tab" class="mm-tab" [class.on]="primary() === t.id" [attr.aria-selected]="primary() === t.id"
                     [id]="'mm-tab-' + t.id" (click)="go(t.id)">
               {{ t.label }}
               @if (t.id === 'criteria') { <span class="count">{{ criteriaCount() }}</span> }
-              @if (t.id === 'draft' && openDraft()) { <span class="dot" title="Draft in progress"></span> }
+              @if (t.id === 'draft' && openDraft()) { <span class="dot" title="Unapplied changes"></span> }
               @if (t.id === 'history') { <span class="count">{{ versions().length }}</span> }
             </button>
           }
         </nav>
       </section>
+
+      @if (primary() === 'advanced') {
+        <section class="panel mm-adv" aria-labelledby="mm-tab-advanced">
+          <div class="mm-section-head">
+            <div>
+              <h2>Advanced options</h2>
+              <p>The data fields rules can use, and notes on how the original workbook scores are reproduced.</p>
+            </div>
+          </div>
+          <div class="mm-subtabs" role="group" aria-label="Advanced options">
+            <button type="button" [class.on]="tab() === 'fields'" [attr.aria-pressed]="tab() === 'fields'" (click)="go('fields')">Data Fields</button>
+            <button type="button" [class.on]="tab() === 'reference'" [attr.aria-pressed]="tab() === 'reference'" (click)="go('reference')">Reference</button>
+          </div>
+        </section>
+      }
 
       <!-- ===== Scoring criteria ===== -->
       @switch (tab()) {
@@ -88,20 +97,15 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
           <section class="panel" role="tabpanel" aria-labelledby="mm-tab-criteria">
             <div class="mm-section-head">
               <div>
-                <h2>Scoring criteria</h2>
-                @if (methodology.active(); as a) {
-                  <p>Live scores come from <b>v{{ a.version.id }} · {{ a.version.name }}</b>
-                    @if (a.version.isBaseline) { <span class="pill violet">Original workbook</span> }
-                    @else if (a.version.identicalToBaseline) { <span class="pill violet">Identical to original</span> }
-                    @else { <span class="pill amber">Custom</span> }.
-                    <b>Edit</b> opens a draft copy — the active version itself never changes.</p>
-                }
+                <h2>Scoring rules</h2>
+                <p>Select <b>Show More</b> to see exactly how a rule awards points. <b>Edit Rule</b> opens a draft copy — live scores
+                  don't change until you apply scoring.</p>
               </div>
             </div>
             @if (methodology.active()) {
               <app-criteria-board [items]="cardItems()" [busy]="busy()" (edit)="editCriterion($event)" />
             } @else {
-              <p class="mm-muted">Loading the active methodology…</p>
+              <p class="mm-muted">Loading the scoring rules…</p>
             }
           </section>
         }
@@ -111,9 +115,9 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
           <section class="panel" role="tabpanel" aria-labelledby="mm-tab-draft">
             <div class="mm-section-head">
               <div>
-                <h2>Draft &amp; preview</h2>
-                <p>Drafts never affect live scores. Save the draft, preview all {{ totalSites() | number }} sites, then confirm to publish —
-                  every view switches to the new scores at once.</p>
+                <h2>Review changes</h2>
+                <p>Drafts never affect live scores. Save the draft, review results for all {{ totalSites() | number }} sites, then confirm
+                  <b>Apply Scoring</b> — every view switches to the new scores at once.</p>
               </div>
             </div>
             @if (openDraft(); as d) {
@@ -121,20 +125,20 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
                 <div class="vno">v{{ d.id }}</div>
                 <div>
                   <div class="vtitle">{{ d.name }} <span class="pill amber">Draft</span>
-                    @if (d.previewCurrent) { <span class="pill blue">Previewed</span> }
+                    @if (d.previewCurrent) { <span class="pill blue">Results reviewed</span> }
                     @if (d.identicalToBaseline) { <span class="pill violet">= original</span> }</div>
-                  <div class="vmeta">Based on v{{ d.basedOnVersionId }} · {{ d.enabledCount }} of {{ d.criteriaCount }} criteria on · last saved {{ d.updatedAtUtc | date: 'medium' }}</div>
+                  <div class="vmeta">Based on v{{ d.basedOnVersionId }} · {{ d.enabledCount }} of {{ d.criteriaCount }} rules on · last saved {{ d.updatedAtUtc | date: 'medium' }}</div>
                 </div>
                 <a class="btn primary" [routerLink]="['/methodology/versions', d.id]">Open draft workspace</a>
               </div>
               <ol class="mm-steps" aria-label="Publishing workflow">
-                <li class="done"><span class="n">✓</span><span class="t"><b>Edit criteria</b>Draft created</span></li>
+                <li class="done"><span class="n">✓</span><span class="t"><b>Edit rules</b>Draft created</span></li>
                 <li class="done"><span class="n">✓</span><span class="t"><b>Save draft</b>Saved {{ d.updatedAtUtc | date: 'shortTime' }}</span></li>
                 <li [class.done]="d.previewCurrent" [class.current]="!d.previewCurrent"><span class="n">{{ d.previewCurrent ? '✓' : '3' }}</span>
-                  <span class="t"><b>Preview</b>{{ d.previewCurrent ? 'Up to date' : 'Not run yet' }}</span></li>
-                <li [class.current]="d.previewCurrent"><span class="n">4</span><span class="t"><b>Confirm &amp; publish</b>Typed confirmation</span></li>
+                  <span class="t"><b>Review Results</b>{{ d.previewCurrent ? 'Up to date' : 'Not run yet' }}</span></li>
+                <li [class.current]="d.previewCurrent"><span class="n">4</span><span class="t"><b>Apply Scoring</b>Typed confirmation</span></li>
               </ol>
-              <h3>Changes compared with the active methodology</h3>
+              <h3>Changes compared with the active scoring method</h3>
               @if (draftDetail(); as dd) {
                 @if (dd.changesVsActive.length) {
                   <ul class="mm-changes">
@@ -150,7 +154,7 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
             } @else {
               <div class="mm-empty">
                 <b>No draft in progress</b>
-                <span>Use <b>Edit</b> on any criterion or <b>Add New Criterion</b> to start one. The active version stays live until you publish.</span>
+                <span>Use <b>Edit Rule</b> on any rule or <b>Add Rule</b> to start one. The active version stays live until you apply scoring.</span>
                 <button type="button" class="btn" (click)="startDraft()" [disabled]="busy()">Start a draft from v{{ methodology.versionId() }}</button>
               </div>
             }
@@ -175,9 +179,9 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
           <section class="panel" role="tabpanel" aria-labelledby="mm-tab-history">
             <div class="mm-section-head">
               <div>
-                <h2>Version history</h2>
-                <p>Published versions are permanent and can be restored at any time (preview + confirmation). Version 1 is the original
-                  C3 workbook methodology and can never be edited or deleted.</p>
+                <h2>Previous methods</h2>
+                <p>Every scoring method that has been applied is kept and can be restored at any time (review results, then confirm).
+                  Version 1 is the original C3 workbook method and can never be edited or deleted.</p>
               </div>
             </div>
             <div class="mm-versions">
@@ -191,7 +195,7 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
                       @if (v.isPreviousActive) { <span class="pill">Previous</span> }
                       @if (v.isBaseline) { <span class="pill violet">Original baseline</span> } @else if (v.identicalToBaseline) { <span class="pill violet">= original</span> }
                     </div>
-                    <div class="vmeta">{{ v.enabledCount }} of {{ v.criteriaCount }} criteria on ·
+                    <div class="vmeta">Version {{ v.id }} · {{ v.enabledCount }} of {{ v.criteriaCount }} rules on ·
                       @if (v.publishedAtUtc) { published {{ v.publishedAtUtc | date: 'medium' }} } @else { created {{ v.createdAtUtc | date: 'medium' }} }</div>
                     @if (v.changeSummary) { <div class="vsum" [title]="v.changeSummary">{{ v.changeSummary }}</div> }
                   </div>
@@ -202,7 +206,7 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
             </div>
             @if (activations().length) {
               <details class="mm-ref" style="margin-top:12px">
-                <summary>Activation log <small>{{ activations().length }} event(s) — every time live scoring switched</small></summary>
+                <summary>Change log <small>{{ activations().length }} event(s) — every time live scoring switched</small></summary>
                 <div class="mm-ref-body">
                   <ul class="mm-log">
                     @for (a of activations(); track a.id) {
@@ -219,10 +223,10 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
 
         <!-- ===== Data fields ===== -->
         @case ('fields') {
-          <section class="panel" role="tabpanel" aria-labelledby="mm-tab-fields">
+          <section class="panel" role="tabpanel" aria-labelledby="mm-tab-advanced">
             <app-custom-fields-panel (addCustom)="addCustom()" />
             <details class="mm-ref" style="margin-top:16px">
-              <summary>Built-in data fields <small>{{ builtinFields().length }} typed fields any criterion can use</small></summary>
+              <summary>Built-in data fields <small>{{ builtinFields().length }} fields any rule can use</small></summary>
               <div class="mm-ref-body">
                 <div class="mm-toolbar" style="margin:0 0 8px">
                   <label class="mm-search">
@@ -247,7 +251,7 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
 
         <!-- ===== Reference ===== -->
         @case ('reference') {
-          <section role="tabpanel" aria-labelledby="mm-tab-reference">
+          <section role="tabpanel" aria-labelledby="mm-tab-advanced">
             <details class="mm-ref" open>
               <summary>How the original workbook rules are reproduced <small>Version 1 reproduces the workbook exactly</small></summary>
               <div class="mm-ref-body">
@@ -340,17 +344,23 @@ export class MethodologyPage {
   /** ?tab=criteria|draft|history|fields|reference */
   readonly tabParam = input<string | undefined>(undefined, { alias: 'tab' });
 
-  protected readonly tabs: { id: Tab; label: string }[] = [
-    { id: 'criteria', label: 'Scoring Criteria' }, { id: 'draft', label: 'Draft & Preview' }, { id: 'history', label: 'Version History' },
-    { id: 'fields', label: 'Data Fields' }, { id: 'reference', label: 'Reference' },
+  protected readonly tabs: { id: Primary; label: string }[] = [
+    { id: 'criteria', label: 'Scoring Rules' }, { id: 'draft', label: 'Review Changes' }, { id: 'history', label: 'Previous Methods' },
+    { id: 'advanced', label: 'Advanced Options' },
   ];
-  protected readonly tab = computed<Tab>(() => (TABS as string[]).includes(this.tabParam() ?? '') ? this.tabParam() as Tab : 'criteria');
+  protected readonly tab = computed<Tab>(() => {
+    const t = this.tabParam() === 'advanced' ? 'fields' : this.tabParam() ?? '';
+    return (TABS as string[]).includes(t) ? t as Tab : 'criteria';
+  });
+  protected readonly primary = computed<Primary>(() => { const t = this.tab(); return t === 'fields' || t === 'reference' ? 'advanced' : t; });
 
   protected readonly notes = toSignal(this.api.methodology());
   protected readonly versions = signal<VersionSummary[]>([]);
   protected readonly activations = signal<Activation[]>([]);
   protected readonly fields = signal<ScoringFieldInfo[]>([]);
   protected readonly draftDetail = signal<VersionDetail | null>(null);
+  /** The active version's structured rules, used only to explain each rule exactly (Show More). */
+  private readonly activeRules = signal<{ id: number; criteria: Criterion[] } | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly fieldQuery = signal('');
@@ -358,6 +368,13 @@ export class MethodologyPage {
   constructor() {
     // Reload history (and field coverage) whenever the active version changes (publish here or elsewhere).
     effect(() => { this.methodology.active(); untracked(() => this.loadHistory()); });
+    effect(() => {
+      const id = this.methodology.versionId();
+      untracked(() => {
+        if (id !== null && this.activeRules()?.id !== id)
+          this.api.methodologyVersion(id).subscribe({ next: d => this.activeRules.set({ id, criteria: d.rules.criteria }), error: () => {} });
+      });
+    });
     // The open draft's saved differences, for the Draft & Preview tab.
     effect(() => {
       const d = this.openDraft();
@@ -380,7 +397,14 @@ export class MethodologyPage {
     key: c.key, name: c.name, explanation: c.explanation, category: c.category, enabled: c.enabled, builtIn: c.builtIn,
     min: c.min, max: c.max, rule: c.rule,
     missingPolicy: c.missingPolicy ? c.missingPolicy.replace(/^Sites without data get /, '').replace(/ points$/, ' pts') : null,
+    breakdown: this.explain(c.key),
   })));
+  private explain(key: string) {
+    const rules = this.activeRules(), fields = this.fields();
+    if (!rules || rules.id !== this.methodology.versionId() || !fields.length) return null;
+    const r = rules.criteria.find(x => x.key === key);
+    return r ? explainScoring(r, fields) : null;
+  }
   protected readonly criteriaCount = computed(() => this.methodology.active()?.criteria.length ?? 0);
   protected readonly enabledCount = computed(() => (this.methodology.active()?.criteria ?? []).filter(c => c.enabled).length);
   protected readonly totalSites = computed(() => { const f = this.fields()[0]; return f ? f.present + f.missing : 0; });
@@ -395,7 +419,10 @@ export class MethodologyPage {
     return this.builtinFields().filter(f => !q || [f.label, f.description, f.group].some(t => t.toLowerCase().includes(q)));
   });
 
-  protected go(t: Tab) { this.router.navigate([], { queryParams: { tab: t === 'criteria' ? null : t }, queryParamsHandling: 'merge', replaceUrl: true }); }
+  protected go(t: Tab | Primary) {
+    const to = t === 'advanced' ? 'fields' : t;
+    this.router.navigate([], { queryParams: { tab: to === 'criteria' ? null : to }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
 
   /** Edit never changes a published version (incl. the original v1): it opens the working draft based on it. */
   protected editCriterion(key: string) { this.toDraft({ edit: key }); }

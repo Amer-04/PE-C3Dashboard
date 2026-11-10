@@ -19,10 +19,10 @@ import {
     <div class="ed">
       <section class="mm-block" aria-labelledby="ed-basics">
         <h3 id="ed-basics">Basics</h3>
-        <label class="mm-input"><span>Criterion name</span>
-          <input [value]="c.name" [readOnly]="readonly()" aria-label="Criterion name" maxlength="80" (input)="set({ name: raw($event) })" />
+        <label class="mm-input"><span>Rule name</span>
+          <input [value]="c.name" [readOnly]="readonly()" aria-label="Rule name" maxlength="80" (input)="set({ name: raw($event) })" />
         </label>
-        <label class="mm-input"><span>Description <span class="help">— shown on the criterion card</span></span>
+        <label class="mm-input"><span>Description <span class="help">— shown in the rules list</span></span>
           <textarea rows="2" [value]="c.explanation" [readOnly]="readonly()" maxlength="600" aria-label="Description"
                     (input)="set({ explanation: raw($event) })"></textarea>
         </label>
@@ -41,7 +41,7 @@ import {
         </div>
         <details class="adv">
           <summary>Advanced</summary>
-          <label class="mm-input"><span>Key <span class="help">— stable identifier used in exports{{ c.builtIn ? ' (fixed for original criteria)' : '' }}</span></span>
+          <label class="mm-input"><span>Key <span class="help">— stable identifier used in exports{{ c.builtIn ? ' (fixed for original rules)' : '' }}</span></span>
             <input [value]="c.key" [readOnly]="readonly() || c.builtIn" maxlength="40" (change)="set({ key: str($event) })" aria-label="Key" />
           </label>
         </details>

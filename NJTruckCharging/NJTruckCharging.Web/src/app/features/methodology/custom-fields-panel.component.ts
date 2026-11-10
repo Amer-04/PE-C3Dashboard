@@ -14,11 +14,11 @@ import { CustomImportDialogComponent } from './custom-import-dialog.component';
     <div class="mm-section-head">
       <div>
         <h2>Custom data fields</h2>
-        <p>Typed fields your team defines with <b>Add New Criterion → Other — Custom Criterion</b>. Sites without a value stay
-          <b>Unknown</b> and receive only the criterion's missing-data policy. Values affect scores only after a methodology that uses
-          them is previewed and published.</p>
+        <p>Typed fields your team defines with <b>Add Rule → Other — Custom Rule</b>. Sites without a value stay
+          <b>Unknown</b> and receive only the rule's missing-data policy. Values affect scores only after a scoring method that uses
+          them has its results reviewed and scoring applied.</p>
       </div>
-      <button type="button" class="btn" (click)="addCustom.emit()">＋ New custom criterion</button>
+      <button type="button" class="btn" (click)="addCustom.emit()">＋ New custom rule</button>
     </div>
     @if (fields().length) {
       <div class="mm-cards">
@@ -52,7 +52,7 @@ import { CustomImportDialogComponent } from './custom-import-dialog.component';
       <div class="mm-empty">
         <b>No custom data fields yet</b>
         <span>Score something the workbook doesn't have — e.g. “Utility capacity confirmed” or “Zoning outcome”.</span>
-        <button type="button" class="btn" (click)="addCustom.emit()">＋ Create a custom criterion</button>
+        <button type="button" class="btn" (click)="addCustom.emit()">＋ Create a custom rule</button>
       </div>
     }
     @if (importing(); as f) {

@@ -125,7 +125,7 @@ public static partial class MethodologyValidator
             switch (f.Type)
             {
                 case FieldType.Number:
-                    if (cond.Value is not { } v || !double.IsFinite(v)) err($"{cp}.value", "A finite number is required.");
+                    if (cond.Value is not { } v || !double.IsFinite(v)) err($"{cp}.value", "Enter a number for this condition.");
                     if (cond.Op == ConditionOp.Between)
                     {
                         if (cond.Value2 is not { } v2 || !double.IsFinite(v2)) err($"{cp}.value2", "An upper bound is required for 'between'.");
@@ -168,7 +168,7 @@ public static partial class MethodologyValidator
 
     private static void CheckPoints(string path, double v, Action<string, string> err)
     {
-        if (!double.IsFinite(v)) err(path, "Points must be a finite number.");
+        if (!double.IsFinite(v)) err(path, "Enter a number for the points.");
         else if (Math.Abs(v) > MaxAbsPoints) err(path, $"Points must be between −{MaxAbsPoints} and {MaxAbsPoints}.");
     }
 }
