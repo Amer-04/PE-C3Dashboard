@@ -5,7 +5,7 @@ Read-only demo for approved company users. Free plans only.
 | Part | Where | Holds |
 |---|---|---|
 | Database | Supabase project **C3-Site-Finder** `https://olxmmztusojqfyvnzusx.supabase.co` (dedicated to C3), schema **`c3`** | sites, scores, methodology versions, bookmarks, contacts, research |
-| Sign-in | Supabase Auth of the same project | approved users only; e-mailed one-time code |
+| Sign-in | Supabase Auth of the same project | administrator-created employee accounts; e-mail + password |
 | API | Render (Docker, free) | ASP.NET Core API; checks every request |
 | Website | Netlify (free) | Angular dashboard |
 
@@ -13,7 +13,8 @@ No other Supabase project is used or changed.
 
 ## Security model
 
-* **Sign-in:** e-mail one-time code. Public sign-up is off; the website never creates accounts (`shouldCreateUser: false`).
+* **Sign-in:** e-mail + password for accounts the administrator created. Public sign-up is off; the website has no
+  sign-up, sends no e-mail and ignores tokens in links (`detectSessionInUrl: false`).
   Users exist only because an administrator created them.
 * **Every API request** needs a Supabase access token. The API checks signature (the project's published signing keys),
   issuer, audience (`authenticated`) and expiry → **401**. The token's user id must be in `Auth__AllowedUserIds` on
@@ -53,18 +54,20 @@ No other Supabase project is used or changed.
 |---|---|
 | Authentication → Sign In / Providers → **Allow new users to sign up** | **Off** |
 | Authentication → Sign In / Providers → **Allow anonymous sign-ins** | **Off** |
-| Email provider | **On**; Confirm email **on**; **Email OTP expiration 600 s**; **Email OTP length 6** |
+| Email provider | **On** (needed for e-mail + password sign-in); Confirm email **on** (users are created already confirmed) |
+| Authentication → **Password requirements** (if offered) | Minimum length **12**; require letters and digits |
 | Phone and all social/SSO providers | Off |
-| Authentication → Emails → Templates → **Magic Link** | Subject `Your C3 Site Finder sign-in code`; body: `<p>Your C3 Site Finder sign-in code is <b>{{ .Token }}</b>.</p><p>It expires in 10 minutes. If you did not ask for it, ignore this e-mail.</p>` |
-| Authentication → Emails → **SMTP Settings** | **Custom SMTP** (company mail server or an e-mail provider). Without it Supabase sends only to the organization's team members, a few per hour. |
-| Authentication → **Rate Limits** | E-mails per hour ≥ 30 (possible only with custom SMTP); keep OTP verification limits at default |
-| Authentication → **URL Configuration** | Site URL = `https://<site>.netlify.app`; Redirect URLs: the same address (nothing else) |
+| Authentication → Emails → **SMTP Settings** | Not required: password sign-in sends no e-mail. Only needed if e-mailed password resets are added later. |
+| Authentication → **Rate Limits** | Keep the defaults (sign-in attempts are limited per IP address) |
+| Authentication → **URL Configuration** | Site URL = `https://<site>.netlify.app` (replace the default `http://localhost:3000`); Redirect URLs: `https://<site>.netlify.app/**` only |
 | Project Settings → **JWT Keys** | Keep the default asymmetric signing key (ES256/RS256). Do not switch to a legacy shared secret. |
 | Project Settings → **Data API** | **Disabled** (if it is on: exposed schemas must not include `c3`) |
 
-**Approved users:** Authentication → Users → **Add user → Create new user**: work e-mail, a long random password that is
-never shared (sign-in uses e-mailed codes), **Auto Confirm User: on** (no e-mail is sent). Copy each **User UID** into
-`Auth__AllowedUserIds` on Render. **Revoke:** remove the UID (effective after Render restarts) and delete the user.
+**Employee accounts:** Authentication → Users → **Add user → Create new user**: work e-mail, an initial password (at
+least 12 characters, handed to the employee privately — never by e-mail or chat), **Auto Confirm User: on** (no e-mail
+is sent). Copy each **User UID** into `Auth__AllowedUserIds` on Render. The website signs in with e-mail + password
+only; it has no sign-up, no e-mailed codes and ignores sign-in links. **Revoke:** remove the UID (effective after Render
+restarts) and delete or ban the user.
 
 ## 3. Copy source (local, read-only for the live database)
 
@@ -136,7 +139,7 @@ dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runti
 ## 7. Verify against the real services
 
 * Website signed out → sign-in screen only. `curl https://<service>.onrender.com/api/sites` and `/api/sites/export` → 401.
-* An e-mail that was not created in Supabase gets no code; a created user who is not in `Auth__AllowedUserIds` sees
+* A wrong e-mail or password shows the same message; a created user who is not in `Auth__AllowedUserIds` sees
   "not approved" (403).
 * Approved user → dashboard with 30,584 sites, CSV export works, any change → "This online demo is read-only".
 * Supabase Data API: `https://olxmmztusojqfyvnzusx.supabase.co/rest/v1/` with the publishable key returns nothing from `c3`
