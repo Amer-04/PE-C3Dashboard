@@ -62,6 +62,11 @@ button, input, select { font: inherit; color: inherit; }
 .brand-name span { opacity: .5; margin: 0 2px; }
 .brand-sub { font-size: 12px; opacity: .72; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
+.demo-pill { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #fef3c7; color: #78350f; white-space: nowrap; }
+.signout { min-height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid rgb(255 255 255 / 30%); background: rgb(255 255 255 / 8%);
+  color: var(--ink-text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.signout:hover { background: rgb(255 255 255 / 16%); }
+.signout:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 .topbar nav { display: flex; gap: 4px; }
 .topbar nav a { color: var(--ink-text); opacity: .75; padding: 6px 12px; border-radius: 8px; }
 .topbar nav a:hover { opacity: 1; text-decoration: none; background: rgb(255 255 255 / 8%); }

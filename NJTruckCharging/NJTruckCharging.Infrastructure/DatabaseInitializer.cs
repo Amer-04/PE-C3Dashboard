@@ -23,6 +23,18 @@ public static class DatabaseInitializer
         var config = sp.GetRequiredService<IConfiguration>();
         var db = sp.GetRequiredService<AppDbContext>();
 
+        if (config.GetValue<bool>("Database:SkipInitialization"))
+        {
+            // Read-only deployments (e.g. the cloud demo, whose database login can only SELECT): never migrate, seed
+            // or create anything — the schema and data were prepared in advance. Only load the active methodology.
+            logger.LogInformation("Database:SkipInitialization is set: no migrations, seeding or baseline creation.");
+            await sp.GetRequiredService<NJTruckCharging.Application.Methodology.MethodologyService>().RefreshCacheAsync(ct);
+            return;
+        }
+        if (db.Database.IsPostgres())
+            throw new InvalidOperationException(
+                "PostgreSQL databases are prepared with the NJTruckCharging.CloudCopy tool; set Database:SkipInitialization=true.");
+
         if (db.Database.GetMigrations().Any())
         {
             var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();

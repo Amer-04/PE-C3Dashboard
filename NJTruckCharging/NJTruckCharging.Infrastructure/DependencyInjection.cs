@@ -14,12 +14,29 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing.");
 
-        services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connectionString, sql =>
+        if (DatabaseProvider.IsPostgres(configuration))
         {
-            sql.EnableRetryOnFailure(3);
-            sql.CommandTimeout(180);
-            sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
-        }));
+            // Cloud deployment (Supabase PostgreSQL). DateTime values keep their SQL Server meaning (UTC, no offset).
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            // Unqualified table names in the few raw-SQL statements resolve to the app's schema.
+            var pgConnection = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+            if (string.IsNullOrEmpty(pgConnection.SearchPath)) pgConnection.SearchPath = DatabaseProvider.PostgresSchema;
+            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(pgConnection.ConnectionString, pg =>
+            {
+                pg.EnableRetryOnFailure(3);
+                pg.CommandTimeout(180);
+                pg.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+            }));
+        }
+        else
+        {
+            services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connectionString, sql =>
+            {
+                sql.EnableRetryOnFailure(3);
+                sql.CommandTimeout(180);
+                sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+            }));
+        }
 
         services.AddScoped<IReadStore, ReadStore>();
         services.AddScoped<IWriteStore, WriteStore>();

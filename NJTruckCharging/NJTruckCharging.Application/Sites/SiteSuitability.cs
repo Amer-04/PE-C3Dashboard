@@ -310,7 +310,7 @@ public static partial class SiteSuitability
                     "Record the number of spaces in the parking-capacity review");
             return Rate(nameof(Capacity), q, n.Value, SuitabilityBasis.Verified, $"{n} spaces (verified)", ev(review), null);
         }
-        var est = s.OpenAcresEst > 0 ? (int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null;
+        var est = s.OpenAcresEst > 0 ? (int)Math.Floor(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null;
         return est is null
             ? new(nameof(Capacity), q, SuitabilityAnswer.Unknown, SuitabilityBasis.Missing, "Unknown — no open-land estimate", "",
                 "Count the possible parking spaces on satellite imagery")
@@ -360,7 +360,7 @@ public static partial class SiteSuitability
             return Rate(nameof(TruckSpaces), q, n, SuitabilityBasis.Verified, $"{n} truck-suitable spaces (verified)", ev(review), null);
         if (review is { Status: FeasibilityStatus.Concern })
             return new(nameof(TruckSpaces), q, SuitabilityAnswer.No, SuitabilityBasis.Verified, "Concern — truck parking", ev(review), next);
-        var est = s.OpenAcresEst > 0 ? (int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null;
+        var est = s.OpenAcresEst > 0 ? (int)Math.Floor(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null;
         return new(nameof(TruckSpaces), q, SuitabilityAnswer.Unknown, SuitabilityBasis.Missing, "Unknown — not counted yet",
             (est is null ? "No estimate is available. " : $"The ~{est}-space estimate assumes open land could take tractor-trailers; it is not a truck count. ")
             + "Existing striped car parking is not counted as truck-suitable.", next);

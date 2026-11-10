@@ -197,7 +197,7 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
             [
                 I(s.Segment), I(s.ComputedRank), F(s.Score), s.SiteId, s.SiteAddress, s.Municipality, s.County, s.PropClass,
                 F(s.Acres), F(s.OpenAcresEst),
-                s.OpenAcresEst > 0 ? I((int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre)) : "unknown",
+                s.OpenAcresEst > 0 ? I((int)Math.Floor(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre)) : "unknown",
                 IosToken(ios.Classification), IosBasisText(ios.Basis),
                 F(s.MilesToExit), s.NearestHighway ?? "", s.NearestExit ?? "",
                 I(s.TrucksBased5Mi), I(Math.Max(s.TruckAadtAdjacent, s.TruckAadtAtExit)), I(s.LargeWarehouses2Mi),
@@ -267,7 +267,7 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
                 s.BusinessesOnSite ?? "", s.BusinessPhone ?? "", OwnerMailing(s) ?? "", St(ResearchReadiness.BusinessKey), Ev(ResearchReadiness.BusinessKey),
                 s.NearestHighway ?? "Unknown", s.NearestExit ?? "", s.NearestHighway is null ? "Unknown" : F2(s.MilesToExit),
                 St(FeasibilityItemKey.EligibleHighwayAccess), Ev(FeasibilityItemKey.EligibleHighwayAccess),
-                s.OpenAcresEst > 0 ? I((int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre)) : "Unknown",
+                s.OpenAcresEst > 0 ? I((int)Math.Floor(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre)) : "Unknown",
                 St(FeasibilityItemKey.TruckParkingCapacity), verifiedCount is { } n ? I(n) : "Unknown", Ev(FeasibilityItemKey.TruckParkingCapacity),
                 St(FeasibilityItemKey.TruckEntranceAccess), St(FeasibilityItemKey.TurningManeuveringSpace),
                 string.Join(" | ", new[] { Ev(FeasibilityItemKey.TruckEntranceAccess), Ev(FeasibilityItemKey.TurningManeuveringSpace) }.Where(x => x.Length > 0)),
@@ -364,7 +364,7 @@ public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodo
             s.NearPowerEdisonSite, s.NearestPowerEdisonSite, s.MilesToPowerEdisonSite,
             s.Latitude, s.Longitude,
             // Preliminary estimate only; null (Unknown) when there is no open-acreage estimate.
-            s.OpenAcresEst > 0 ? (int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null,
+            s.OpenAcresEst > 0 ? (int)Math.Floor(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : (int?)null,
             ios, IosBasis.SourceDerived,
             ScreeningDecision.NotReviewed, SiteEvidence.Unknown, ContactReadiness.NoContact, null,
             // Listed general business line from the C3 workbook (Overture places) — shown as-is, never as a contact.

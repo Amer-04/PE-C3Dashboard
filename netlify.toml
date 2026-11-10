@@ -1,0 +1,16 @@
+# Netlify (free) — C3 Site Finder dashboard (Angular). The API runs on Render; data is in Supabase.
+# Required Netlify environment variables (public values only): C3_API_BASE_URL, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY.
+# See docs/deploy/CLOUD_DEPLOYMENT.md.
+[build]
+  base = "NJTruckCharging/NJTruckCharging.Web"
+  command = "npm run build && node scripts/netlify-postbuild.mjs"
+  publish = "dist/NJTruckCharging.Web/browser"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Single-page app: every route serves index.html (real files such as app-config.json are served as-is).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

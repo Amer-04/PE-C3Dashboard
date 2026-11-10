@@ -125,7 +125,7 @@ public sealed class SiteComparisonService(IReadStore store)
             MilesToExit = s.MilesToExit,
             HighwayAccess = V(FeasibilityItemKey.EligibleHighwayAccess),
             TruckEntrance = V(FeasibilityItemKey.TruckEntranceAccess),
-            EstimatedParkingPreliminary = s.OpenAcresEst > 0 ? (int)(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : null,
+            EstimatedParkingPreliminary = s.OpenAcresEst > 0 ? (int)Math.Floor(s.OpenAcresEst * SiteFilter.EstimatedTrailersPerOpenAcre) : null,
             VerifiedParking = V(FeasibilityItemKey.TruckParkingCapacity),
             Utility = s.Utility,
             Electrical = V(FeasibilityItemKey.ElectricalService),

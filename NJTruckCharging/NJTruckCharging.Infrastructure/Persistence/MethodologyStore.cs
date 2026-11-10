@@ -173,6 +173,18 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
     /// <summary>One set-based UPDATE copying a version's scores onto the live columns (inside the caller's transaction).</summary>
     internal static Task<int> MaterializeAsync(AppDbContext db, int versionId, CancellationToken ct)
     {
+        if (db.Database.IsPostgres())
+        {
+            var pgCols = string.Join(",\n    ", BaselineMethodology.BreakdownColumns.Values.Select(c => $"\"Breakdown_{c}\" = v.\"Breakdown_{c}\""));
+            return db.Database.ExecuteSqlRawAsync($"""
+                UPDATE "CandidateSites" AS c SET
+                    "Score" = v."Score", "ComputedRank" = v."Rank", "TruckDemandPoints" = v."TruckDemandPoints",
+                    "ScoreVersionId" = v."MethodologyVersionId",
+                    {pgCols}
+                FROM "SiteVersionScores" AS v
+                WHERE v."SiteId" = c."SiteId" AND v."MethodologyVersionId" = @p0
+                """, [versionId], ct);
+        }
         var cols = string.Join(",\n    ", BaselineMethodology.BreakdownColumns.Values.Select(c => $"c.[Breakdown_{c}] = v.[Breakdown_{c}]"));
         var sql = $"""
             UPDATE c SET
@@ -196,7 +208,19 @@ internal static class ScoringLock
 
     public static async Task<bool> TryAcquireAsync(AppDbContext db, CancellationToken ct, int timeoutMs = 3000)
     {
-        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.SqlServer") return true;
+        if (db.Database.IsPostgres())
+        {
+            // Transaction-scoped advisory lock (released at commit/rollback), polled until the timeout.
+            var key = BitConverter.ToInt64(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Resource)), 0);
+            for (var waited = 0; ; waited += 100)
+            {
+                var got = await db.Database.SqlQueryRaw<bool>("SELECT pg_try_advisory_xact_lock({0}) AS \"Value\"", key).ToListAsync(ct);
+                if (got.Count == 1 && got[0]) return true;
+                if (waited >= timeoutMs) return false;
+                await Task.Delay(100, ct);
+            }
+        }
+        if (!db.Database.IsSqlServer()) return true;
         var result = await db.Database.SqlQueryRaw<int>(
             "DECLARE @r int; EXEC @r = sp_getapplock @Resource = {0}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = {1}; SELECT @r AS [Value];",
             Resource, timeoutMs).ToListAsync(ct);
@@ -233,6 +257,7 @@ internal static class ScoreBulkWriter
         var perRow = 7 + BreakdownProps.Length;
         var conn = db.Database.GetDbConnection();
         var tx = db.Database.CurrentTransaction?.GetDbTransaction();
+        var postgres = db.Database.IsPostgres();
         string? fullSql = null;
         for (var i = 0; i < rows.Count; i += RowsPerStatement)
         {
@@ -240,7 +265,7 @@ internal static class ScoreBulkWriter
             await using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandTimeout = 120;
-            cmd.CommandText = n == RowsPerStatement ? fullSql ??= BuildSql(RowsPerStatement, perRow) : BuildSql(n, perRow);
+            cmd.CommandText = n == RowsPerStatement ? fullSql ??= BuildSql(RowsPerStatement, perRow, postgres) : BuildSql(n, perRow, postgres);
             for (var k = 0; k < n; k++)
             {
                 var r = rows[i + k];
@@ -253,9 +278,11 @@ internal static class ScoreBulkWriter
         }
     }
 
-    private static string BuildSql(int rows, int perRow)
+    private static string BuildSql(int rows, int perRow, bool postgres)
     {
-        var sql = new System.Text.StringBuilder($"INSERT INTO [SiteVersionScores] ({ColumnList}) VALUES ");
+        var sql = new System.Text.StringBuilder(postgres
+            ? $"INSERT INTO \"SiteVersionScores\" ({ColumnList.Replace('[', '"').Replace(']', '"')}) VALUES "
+            : $"INSERT INTO [SiteVersionScores] ({ColumnList}) VALUES ");
         for (var k = 0; k < rows; k++)
         {
             sql.Append(k == 0 ? "(" : ", (");

@@ -1,0 +1,38 @@
+# Render Blueprint — C3 Site Finder API (ASP.NET Core, Docker, free plan).
+# Secrets are entered in the Render dashboard (sync: false); nothing secret is stored in this file.
+# autoDeploy is off: deploys happen only when started manually in Render. See docs/deploy/CLOUD_DEPLOYMENT.md.
+services:
+  - type: web
+    name: c3-site-finder-api
+    runtime: docker
+    plan: free
+    region: virginia     # same region as the Supabase project (us-east-1): ~1-2 ms per database round trip
+    branch: main
+    dockerContext: ./NJTruckCharging
+    dockerfilePath: ./NJTruckCharging/Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: Database__Provider
+        value: Postgres
+      - key: Database__SkipInitialization
+        value: "true"
+      - key: ReadOnlyDemo__Enabled
+        value: "true"
+      - key: Auth__Mode
+        value: Supabase
+      - key: Hosting__BehindProxy
+        value: "true"
+      - key: Import__WorkbookPath
+        value: ""
+      # --- set these in the Render dashboard ---
+      - key: ConnectionStrings__DefaultConnection   # read-only login (c3_demo_readonly), Supabase session pooler, SSL required
+        sync: false
+      - key: Auth__Supabase__Url                    # https://olxmmztusojqfyvnzusx.supabase.co
+        sync: false
+      - key: Auth__AllowedUserIds                   # approved Supabase user ids (UUIDs), comma-separated
+        sync: false
+      - key: Cors__Origins__0                       # https://<site>.netlify.app
+        sync: false
+      - key: GoogleMaps__ApiKey                     # optional: restricted browser key; empty = OpenStreetMap
+        sync: false

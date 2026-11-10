@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.angular/
+**/dist/
+NJTruckCharging.Web/
+NJTruckCharging.Tests/
+NJTruckCharging.CloudCopy/
+**/appsettings.Development.json
+**/appsettings.*.local.json
+**/*.user
+**/secrets.json
+**/.env*

@@ -97,7 +97,8 @@ public sealed class WriteStore(AppDbContext db, ILogger<WriteStore> logger) : IW
 
     public async Task UpdateScoreStatisticsAsync(CancellationToken ct = default)
     {
-        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.SqlServer") return;
+        if (db.Database.IsPostgres()) { await db.Database.ExecuteSqlRawAsync("ANALYZE \"CandidateSites\";", ct); return; }
+        if (!db.Database.IsSqlServer()) return;
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
@@ -108,8 +109,9 @@ public sealed class WriteStore(AppDbContext db, ILogger<WriteStore> logger) : IW
 
     public async Task UpdateStatisticsAsync(CancellationToken ct = default)
     {
+        if (db.Database.IsPostgres()) { await db.Database.ExecuteSqlRawAsync("ANALYZE \"CandidateSites\"; ANALYZE \"NearbyFleets\";", ct); return; }
         // SQL Server only: on other providers (e.g. in tests) this is a no-op.
-        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.SqlServer")
+        if (!db.Database.IsSqlServer())
             return;
 
         logger.LogInformation("Refreshing statistics on CandidateSites and NearbyFleets …");
