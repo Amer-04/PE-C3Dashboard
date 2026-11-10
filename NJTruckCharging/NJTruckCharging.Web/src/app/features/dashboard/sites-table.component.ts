@@ -6,10 +6,11 @@ import { SavedStore } from '../../core/saved-store';
 import { scoreCss } from '../../shared/score-color';
 import { CompareToggleComponent } from '../compare/compare-toggle.component';
 import { ContactCellComponent } from './contact-cell.component';
+import { BusinessCellComponent } from './business-cell.component';
 
 @Component({
   selector: 'app-sites-table',
-  imports: [DecimalPipe, CompareToggleComponent, ContactCellComponent],
+  imports: [DecimalPipe, CompareToggleComponent, ContactCellComponent, BusinessCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="panel table-panel">
@@ -41,6 +42,7 @@ import { ContactCellComponent } from './contact-cell.component';
               <th>Screening</th>
               <th title="From the team's research records only: parcel check, business at address, screening">Site evidence</th>
               <th title="From researched contacts only; a general company line is not a site decision-maker">Contact readiness</th>
+              <th title="Research completeness — core checks reviewed (documented Verified or Concern) and verified, out of 8. Not part of the score.">Research</th>
               <th>Save</th>
               <th>Compare</th>
             </tr>
@@ -58,7 +60,7 @@ import { ContactCellComponent } from './contact-cell.component';
                 <td class="num">{{ s.milesToExit | number: '1.2-2' }}<br /><small class="muted">{{ s.nearestHighway }} {{ s.nearestExit }}</small></td>
                 <td class="num">{{ s.trucksBased5Mi | number }}</td>
                 <td class="num">{{ s.truckTraffic | number }}</td>
-                <td class="ellipsis" [title]="s.businesses ?? ''">{{ s.businesses || '—' }}</td>
+                <td class="biz-col"><app-business-cell [site]="s" /></td>
                 <td class="num" [class.pe-near]="s.nearPowerEdison">{{ s.milesToPowerEdison | number: '1.1-1' }}</td>
                 <td class="flags-cell">
                   @if (s.freight) { <span class="flag good" title="Trucking / logistics business on site">Truck</span> }
@@ -68,8 +70,12 @@ import { ContactCellComponent } from './contact-cell.component';
                   @if (s.nearPowerEdison) { <span class="flag pe" title="Within 2 mi of a Power Edison site">PE ≤2 mi</span> }
                 </td>
                 <td><span class="decision-badge" [attr.data-d]="s.screeningDecision">{{ decisionLabel(s.screeningDecision) }}</span></td>
-                <td><span class="rr-badge" [attr.data-ev]="s.siteEvidence" [title]="evidenceHint(s.siteEvidence)">{{ s.siteEvidence }}</span></td>
+                <td><span class="rr-badge" [attr.data-ev]="s.siteEvidence" [title]="evidenceHint(s.siteEvidence)">{{ evidenceLabel(s.siteEvidence) }}</span></td>
                 <td class="contact-col" [attr.data-cr]="s.contactReadiness" [title]="readiness(s.contactReadiness).label + ' — ' + readiness(s.contactReadiness).hint"><app-contact-cell [site]="s" /></td>
+                <td class="rc-cell" [title]="(s.researchReviewed ?? 0) + ' of 8 core checks reviewed, ' + (s.researchVerified ?? 0) + ' verified'">
+                  @if (s.researchReviewed) { <b>{{ s.researchReviewed }}</b>/8 <small class="muted">· {{ s.researchVerified }} ✓</small> }
+                  @else { <span class="muted">—</span> }
+                </td>
                 <td class="save-cell" (click)="$event.stopPropagation()">
                   <button type="button" class="save-btn" [class.on]="saved.isSaved(s.siteId)"
                           [disabled]="saved.isBusy(s.siteId)"
@@ -84,7 +90,7 @@ import { ContactCellComponent } from './contact-cell.component';
                 </td>
               </tr>
             } @empty {
-              <tr><td colspan="17" class="empty">No sites match these filters.</td></tr>
+              <tr><td colspan="18" class="empty">No sites match these filters.</td></tr>
             }
           </tbody>
         </table>
@@ -109,6 +115,7 @@ export class SitesTableComponent {
   protected sort(by: SiteSort) { this.store.sort(by); }
   protected decisionLabel(d: ScreeningDecision) { return SCREENING_LABELS[d] ?? d; }
   protected evidenceHint(e: SiteEvidence) { return SITE_EVIDENCE.find(x => x.value === e)?.hint ?? ''; }
+  protected evidenceLabel(e: SiteEvidence) { return SITE_EVIDENCE.find(x => x.value === e)?.label ?? e; }
   protected readiness(r: ContactReadiness) { return CONTACT_READINESS.find(x => x.value === r) ?? CONTACT_READINESS[3]; }
 
   /** Select the site and bring the map + detail panel into view. */

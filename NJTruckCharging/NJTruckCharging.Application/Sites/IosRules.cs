@@ -64,7 +64,18 @@ public static class IosRules
     /// <summary>The source-derived classification of one site (in memory).</summary>
     public static IosClassification Classify(CandidateSite s) => DerivedCompiled(s);
 
-    /// <summary>Applies a reviewer's outdoor-storage verdict on top of a source-derived class.</summary>
+    /// <summary>
+    /// Applies a reviewer's outdoor-storage verdict on top of a source-derived class.
+    /// <para>
+    /// Current verification rule (unchanged by Phase 1, deliberately): any stored <c>OutdoorStorageUse</c> verdict
+    /// of Verified makes the site IOS <c>Confirmed</c> (ManualReview); Concern makes it <c>NotIos</c>; anything else
+    /// (Unknown, Conflicting) leaves the source-derived class. Saving a new Verified verdict requires evidence text
+    /// (FeasibilityService), but this classification does NOT check the Phase 1 evidence standard
+    /// (<see cref="Research.ResearchQuality.IsDocumented"/>: source URL, evidence date, Recorded-by name), so a legacy
+    /// or undocumented verdict still confirms IOS. Changing that would move sites between IOS classes and filters;
+    /// it needs a separate, approved decision.
+    /// </para>
+    /// </summary>
     public static (IosClassification Classification, IosBasis Basis) Resolve(IosClassification derived, FeasibilityStatus? review) =>
         review switch
         {

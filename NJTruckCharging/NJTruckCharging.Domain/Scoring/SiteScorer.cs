@@ -38,8 +38,10 @@ public static class SiteScorer
         }
 
         var rank = 1;
-        // Same ordering as the workbook: rounded score, then closest to the exit.
-        foreach (var s in sites.OrderByDescending(s => s.Score).ThenBy(s => s.MilesToExit))
+        // Same ordering as the workbook: rounded score, then closest to the exit. Exact ties (4,356 real sites) fall back
+        // to the workbook's own rank, then SiteId — a total order, so a rescore never depends on database row order.
+        foreach (var s in sites.OrderByDescending(s => s.Score).ThenBy(s => s.MilesToExit)
+                     .ThenBy(s => s.RankInSegment).ThenBy(s => s.SiteId, StringComparer.Ordinal))
             s.ComputedRank = rank++;
     }
 

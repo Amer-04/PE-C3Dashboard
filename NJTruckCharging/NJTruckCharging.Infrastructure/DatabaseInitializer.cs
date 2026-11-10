@@ -24,17 +24,33 @@ public static class DatabaseInitializer
         var db = sp.GetRequiredService<AppDbContext>();
 
         if (db.Database.GetMigrations().Any())
+        {
+            var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+            var refusal = MigrationGuard.Check(db.Database.GetDbConnection().Database, pending, config);
+            if (refusal is not null)
+            {
+                logger.LogCritical("{Reason}", refusal);
+                throw new InvalidOperationException(refusal);
+            }
             await db.Database.MigrateAsync(ct);
+        }
         else
             await db.Database.EnsureCreatedAsync(ct);
 
+        var methodology = sp.GetRequiredService<NJTruckCharging.Application.Methodology.MethodologyService>();
         if (await sp.GetRequiredService<IWriteStore>().HasSitesAsync(ct))
+        {
+            // Creates baseline Version 1 on first run (after verifying it reproduces the stored scores) and loads the
+            // active methodology into the cache.
+            await methodology.EnsureInitializedAsync(ct);
             return;
+        }
 
         var path = config["Import:WorkbookPath"];
         if (string.IsNullOrWhiteSpace(path))
         {
             logger.LogWarning("Database is empty and Import:WorkbookPath is not set. POST the workbook to /api/admin/import.");
+            await methodology.EnsureInitializedAsync(ct);
             return;
         }
 
@@ -43,6 +59,7 @@ public static class DatabaseInitializer
         if (!File.Exists(full))
         {
             logger.LogWarning("Workbook not found at {Path}. POST the workbook to /api/admin/import.", full);
+            await methodology.EnsureInitializedAsync(ct);
             return;
         }
 

@@ -6,10 +6,10 @@ using NJTruckCharging.Domain.Entities;
 
 namespace NJTruckCharging.Application.Sites;
 
-public sealed class SiteQueryService(IReadStore store)
+public sealed class SiteQueryService(IReadStore store, Methodology.ActiveMethodologyCache methodology, ICustomFieldStore customFields)
 {
     public Task<List<SiteMapPointDto>> GetMapPointsAsync(SiteFilter filter, CancellationToken ct = default) =>
-        store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings).Select(s => new SiteMapPointDto(
+        store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store)).Select(s => new SiteMapPointDto(
             s.Id, s.Latitude, s.Longitude, s.Score, s.Segment, s.ComputedRank,
             s.OpenAcresEst, s.FreightUse, s.InFloodZone, s.NearPowerEdisonSite)), ct);
 
@@ -17,7 +17,7 @@ public sealed class SiteQueryService(IReadStore store)
     {
         var pageSize = Math.Clamp(query.PageSize, 1, 500);
         var page = Math.Max(1, query.Page);
-        var q = filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings);
+        var q = filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store));
         var total = await store.CountAsync(q, ct);
         var items = await store.ToListAsync(
             Sort(q, query).Skip((page - 1) * pageSize).Take(pageSize).Select(ToListItem), ct);
@@ -53,6 +53,10 @@ public sealed class SiteQueryService(IReadStore store)
         var feasByKey = feas.GroupBy(f => f.ItemKey).ToDictionary(g => g.Key, g => g.First());
         var suitability = SiteSuitability.Build(s, feasByKey, contacts);
         var validation = SiteValidation.Build(s, feasByKey, contacts, screening?.Decision ?? ScreeningDecision.NotReviewed, suitability);
+        // Per-criterion points of the version whose score this row carries (the active one).
+        var scoreRow = s.ScoreVersionId is { } sv
+            ? await store.FirstOrDefaultAsync(store.SiteVersionScores.Where(x => x.MethodologyVersionId == sv && x.SiteId == s.SiteId), ct)
+            : null;
 
         return new SiteDetailDto
         {
@@ -67,7 +71,11 @@ public sealed class SiteQueryService(IReadStore store)
             ElectricalStatus = electrical?.Status ?? FeasibilityStatus.Unknown,
             ElectricalEvidence = electrical?.Evidence,
             ParkingStatus = parking?.Status ?? FeasibilityStatus.Unknown,
-            VerifiedParkingEvidence = parking is { Status: FeasibilityStatus.Verified } ? parking.Evidence : null,
+            // Only a documented Verified verdict is shown as verified parking.
+            VerifiedParkingEvidence = parking is { Status: FeasibilityStatus.Verified } && Research.ResearchQuality.IsDocumented(parking) ? parking.Evidence : null,
+            TruckEntranceEvidenceState = Research.ResearchQuality.State(entrance),
+            ElectricalEvidenceState = Research.ResearchQuality.State(electrical),
+            ParkingEvidenceState = Research.ResearchQuality.State(parking),
             VerifiedContactCount = verifiedContacts,
             TotalContactCount = totalContacts,
             Summary = ToListItemCompiled(s) with
@@ -76,12 +84,17 @@ public sealed class SiteQueryService(IReadStore store)
                 ScreeningDecision = screening?.Decision ?? ScreeningDecision.NotReviewed,
                 SiteEvidence = validation.SiteEvidence, ContactReadiness = validation.ContactReadiness,
                 TopContact = ResearchReadiness.TopContact(contacts),
-                BusinessListingConfirmed = BusinessConfirmed(feas)
+                BusinessListingConfirmed = BusinessConfirmed(feas),
+                ResearchReviewed = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas, contacts)).Reviewed,
+                ResearchVerified = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas, contacts)).Verified
             },
             ScreeningEvidence = screening?.Evidence,
             ScreeningUpdatedAtUtc = screening?.UpdatedAtUtc,
-            ScoreLines = ScoreLines.For(s, inSegment),
-            TruckDemandPoints = Math.Round(s.Breakdown.TruckDemand, 1),
+            ScoreLines = ScoreLines.For(s, inSegment, methodology.Current, scoreRow,
+                await Methodology.CustomCatalog.BuildAsync(customFields, s.SiteId, ct)),
+            TruckDemandPoints = Math.Round(s.TruckDemandPoints, 1),
+            MethodologyVersionId = s.ScoreVersionId,
+            MethodologyVersionName = methodology.Current is { } am && am.VersionId == s.ScoreVersionId ? am.Name : null,
             SitesInSegment = inSegment,
             PamsPin = s.PamsPin, Block = s.Block, Lot = s.Lot, Qual = s.Qual, LotsInSite = s.LotsInSite, MemberLots = s.MemberLots,
             RecordedAcres = s.RecordedAcres, BuildingCoverage = s.BuildingCoverage, Zoning = s.Zoning,
@@ -127,13 +140,15 @@ public sealed class SiteQueryService(IReadStore store)
             SiteEvidence = ResearchReadiness.Evidence(feas[i.SiteId], i.ScreeningDecision),
             ContactReadiness = ResearchReadiness.Readiness(contacts[i.SiteId]),
             TopContact = ResearchReadiness.TopContact(contacts[i.SiteId].ToList()),
-            BusinessListingConfirmed = BusinessConfirmed(feas[i.SiteId])
+            BusinessListingConfirmed = BusinessConfirmed(feas[i.SiteId]),
+            ResearchReviewed = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas[i.SiteId], contacts[i.SiteId])).Reviewed,
+            ResearchVerified = Research.ResearchQuality.Counts(Research.ResearchQuality.States(feas[i.SiteId], contacts[i.SiteId])).Verified
         }).ToList();
     }
 
     /// <summary>A reviewer verified, with evidence, that the listed business operates at the address.</summary>
     private static bool BusinessConfirmed(IEnumerable<FeasibilityItem> siteItems) =>
-        siteItems.Any(f => f.ItemKey == ResearchReadiness.BusinessKey && f.Status == FeasibilityStatus.Verified && !string.IsNullOrEmpty(f.Evidence));
+        siteItems.Any(f => f.ItemKey == ResearchReadiness.BusinessKey && f.Status == FeasibilityStatus.Verified && Research.ResearchQuality.IsDocumented(f));
 
     private static string? OwnerMailing(CandidateSite s)
     {
@@ -162,17 +177,18 @@ public sealed class SiteQueryService(IReadStore store)
     /// <summary>CSV of the filtered sites (ranked), for desktop review and outreach.</summary>
     public async Task<byte[]> ExportCsvAsync(SiteFilter filter, CancellationToken ct = default)
     {
-        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings)
+        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store))
             .OrderBy(s => s.Segment).ThenBy(s => s.ComputedRank), ct);
         var iosReviews = (await store.ToListAsync(store.FeasibilityItems.Where(f => f.ItemKey == IosRules.ReviewKey), ct))
             .ToDictionary(f => f.SiteId);
         var screenings = (await store.ToListAsync(store.SiteScreenings, ct)).ToDictionary(x => x.SiteId);
+        var versions = await VersionNamesAsync(ct);
         var sb = new StringBuilder();
         sb.AppendLine("segment,rank,score,site_id,address,municipality,county,prop_class,acres,open_acres," +
                       "est_parking_preliminary,ios_classification,ios_basis,miles_to_exit,highway,exit," +
                       "trucks_5mi,truck_traffic,warehouses_2mi,businesses,freight_use,utility,flood_zone,contaminated,highlands," +
                       "nearest_pe_site,miles_to_pe_site,owner_mail_address,owner_mail_city,owner_mail_zip,business_phone,lat,lon," +
-                      "screening_decision,screening_evidence");
+                      "screening_decision,screening_evidence,methodology_version");
         foreach (var s in rows)
         {
             var ios = IosRules.Assess(s, iosReviews.GetValueOrDefault(s.SiteId));
@@ -189,7 +205,8 @@ public sealed class SiteQueryService(IReadStore store)
                 s.KnownContaminatedSites?.ToString(CultureInfo.InvariantCulture) ?? "not checked", s.Highlands ?? "",
                 s.NearestPowerEdisonSite ?? "", F(s.MilesToPowerEdisonSite), s.OwnerMailAddress ?? "", s.OwnerMailCity ?? "",
                 s.OwnerMailZip ?? "", s.BusinessPhone ?? "", F(s.Latitude, "0.######"), F(s.Longitude, "0.######"),
-                Screening.ScreeningRules.Label(sc?.Decision ?? ScreeningDecision.NotReviewed), sc?.Evidence ?? ""
+                Screening.ScreeningRules.Label(sc?.Decision ?? ScreeningDecision.NotReviewed), sc?.Evidence ?? "",
+                VersionLabel(versions, s.ScoreVersionId)
             ];
             sb.AppendLine(string.Join(',', cells.Select(Csv)));
         }
@@ -207,11 +224,12 @@ public sealed class SiteQueryService(IReadStore store)
     /// </summary>
     public async Task<byte[]> ExportResearchCsvAsync(SiteFilter filter, CancellationToken ct = default)
     {
-        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings)
+        var rows = await store.ToListAsync(filter.Apply(store.Sites, store.FeasibilityItems, store.SiteContacts, store.SiteScreenings, Research.ResearchSources.From(store))
             .OrderBy(s => s.Segment).ThenBy(s => s.ComputedRank), ct);
         var feas = (await store.ToListAsync(store.FeasibilityItems, ct)).ToLookup(f => f.SiteId);
         var contacts = (await store.ToListAsync(store.SiteContacts, ct)).ToLookup(c => c.SiteId);
         var screenings = (await store.ToListAsync(store.SiteScreenings, ct)).ToDictionary(x => x.SiteId);
+        var versions = await VersionNamesAsync(ct);
 
         var sb = new StringBuilder();
         sb.AppendLine(string.Join(',', ResearchColumns));
@@ -260,7 +278,8 @@ public sealed class SiteQueryService(IReadStore store)
                 best?.SourceUrl ?? "", best is null ? "" : D(best.LastVerifiedUtc ?? best.UpdatedAtUtc),
                 string.Join(" | ", others.Select(c => $"{c.Name} ({c.ContactType}, {c.VerificationStatus})")),
                 string.Join(" | ", urls),
-                string.Join(" | ", v.MissingVerification)
+                string.Join(" | ", v.MissingVerification),
+                VersionLabel(versions, s.ScoreVersionId)
             ];
             sb.AppendLine(string.Join(',', cells.Select(Csv)));
         }
@@ -284,8 +303,15 @@ public sealed class SiteQueryService(IReadStore store)
         "power_status", "power_evidence", "utility_territory",
         "contact_name", "contact_role", "contact_title", "contact_organization", "contact_phone", "contact_email",
         "contact_status", "contact_source_url", "contact_last_checked", "other_contacts",
-        "evidence_source_urls", "missing_verification"
+        "evidence_source_urls", "missing_verification", "methodology_version"
     ];
+
+    /// <summary>Version names, so every exported row states which methodology produced its score/rank.</summary>
+    private async Task<Dictionary<int, string>> VersionNamesAsync(CancellationToken ct) =>
+        (await store.ToListAsync(store.MethodologyVersions.Select(v => new { v.Id, v.Name }), ct)).ToDictionary(v => v.Id, v => v.Name);
+
+    private static string VersionLabel(Dictionary<int, string> names, int? id) =>
+        id is { } v ? $"v{v} {names.GetValueOrDefault(v, "")}".Trim() : "";
 
     /// <summary>
     /// Orders the list. Every sort ends with the primary key as a tie-breaker so ties (e.g. equal score and exit
@@ -344,7 +370,8 @@ public sealed class SiteQueryService(IReadStore store)
             // Listed general business line from the C3 workbook (Overture places) — shown as-is, never as a contact.
             s.BusinessPhone,
             s.OwnerMailAddress, s.OwnerMailCity, s.OwnerMailZip,
-            false));
+            false,
+            s.BusinessWebsite));
 
     // Declared after ToListItem: static fields initialise in textual order.
     private static readonly Func<CandidateSite, SiteListItemDto> ToListItemCompiled = ToListItem.Compile();

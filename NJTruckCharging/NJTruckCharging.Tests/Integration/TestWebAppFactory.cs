@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NJTruckCharging.Domain.Entities;
 using NJTruckCharging.Domain.Scoring;
 using NJTruckCharging.Infrastructure.Persistence;
@@ -16,8 +18,14 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
 {
     public const int SeededSiteCount = 1500;
 
-    private const string TestConnection =
-        @"Server=(localdb)\MSSQLLocalDB;Database=NJTruckCharging_IntegrationTest;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+    /// <summary>Each factory type gets its own LocalDB database so test classes can run in parallel.</summary>
+    protected virtual string DatabaseName => "NJTruckCharging_IntegrationTest";
+
+    public string TestConnection =>
+        $@"Server=(localdb)\MSSQLLocalDB;Database={DatabaseName};Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+
+    /// <summary>Lets a test make the activation transaction fail right before commit.</summary>
+    public FaultInjectionHook Faults { get; } = new();
 
     private readonly SemaphoreSlim _seedLock = new(1, 1);
     private bool _seeded;
@@ -27,6 +35,25 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Development");
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestConnection);
         builder.UseSetting("Import:WorkbookPath", "");        // skip the 30k-row workbook import
+        builder.ConfigureServices(services =>
+        {
+            // TestServer has no TCP peer: present requests as coming from loopback (the trusted dashboard host) unless a
+            // test sets X-Test-Remote-IP to simulate a client on another network.
+            services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, TestRemoteIpStartupFilter>();
+            services.RemoveAll<NJTruckCharging.Application.Abstractions.IActivationHook>();
+            services.AddSingleton<NJTruckCharging.Application.Abstractions.IActivationHook>(Faults);
+        });
+    }
+
+    /// <summary>A client on the trusted internal network (loopback) — no credential involved.</summary>
+    public HttpClient CreateTrustedClient() => CreateClient();
+
+    /// <summary>A client whose requests appear to come from <paramref name="ip"/>.</summary>
+    public HttpClient CreateClientFrom(string ip)
+    {
+        var c = CreateClient();
+        c.DefaultRequestHeaders.Add(TestRemoteIpStartupFilter.Header, ip);
+        return c;
     }
 
     /// <summary>Migrates the test DB and seeds candidate sites. Idempotent.</summary>
@@ -48,6 +75,11 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 SiteScorer.ScoreAll(sites);
                 db.CandidateSites.AddRange(sites);
                 await db.SaveChangesAsync();
+                // Score the seeded sites with the active methodology (stores Version-1 scores + materialises).
+                var m = sp.GetRequiredService<NJTruckCharging.Application.Methodology.MethodologyService>();
+                var r = await m.ReapplyActiveAsync();
+                if (r.Error != NJTruckCharging.Application.Methodology.MethodologyError.None)
+                    throw new InvalidOperationException("Seeding: " + r.Message);
             }
             _seeded = true;
         }
@@ -115,6 +147,13 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
             $"UPDATE CandidateSites SET BusinessesOnSite = {businesses}, BusinessPhone = {phone}, OwnerMailAddress = {addr}, OwnerMailCity = {city}, OwnerMailZip = {zip} WHERE SiteId = {siteId}");
     }
 
+    public async Task SetBusinessWebsiteAsync(string siteId, string? website)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE CandidateSites SET BusinessWebsite = {website} WHERE SiteId = {siteId}");
+    }
+
     /// <summary>A sample candidate SiteId that exists in the seeded data.</summary>
     public string SampleSiteId => "TEST-0001";
 
@@ -152,4 +191,34 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         foreach (var s in list) s.RefreshDerivedFlags();
         return list;
     }
+}
+
+/// <summary>Throws inside the activation transaction (after the live columns were updated) when armed.</summary>
+public sealed class FaultInjectionHook : NJTruckCharging.Application.Abstractions.IActivationHook
+{
+    public volatile bool FailNextActivation;
+
+    public Task BeforeCommitAsync(int versionId, CancellationToken ct)
+    {
+        if (!FailNextActivation) return Task.CompletedTask;
+        FailNextActivation = false;
+        throw new InvalidOperationException("Injected failure after materialising scores (test).");
+    }
+}
+
+/// <summary>Test-only: sets Connection.RemoteIpAddress (null under TestServer) from X-Test-Remote-IP, default 127.0.0.1.</summary>
+public sealed class TestRemoteIpStartupFilter : Microsoft.AspNetCore.Hosting.IStartupFilter
+{
+    public const string Header = "X-Test-Remote-IP";
+
+    public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Configure(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => app =>
+    {
+        app.Use((ctx, nxt) =>
+        {
+            var ip = ctx.Request.Headers[Header].ToString();
+            ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(string.IsNullOrEmpty(ip) ? "127.0.0.1" : ip);
+            return nxt(ctx);
+        });
+        next(app);
+    };
 }

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { SiteStore } from '../../core/site-store';
+import { MethodologyStore } from '../../core/methodology-store';
 
 @Component({
   selector: 'app-kpi-strip',
@@ -17,7 +18,7 @@ import { SiteStore } from '../../core/site-store';
         <div class="kpi">
           <span class="kpi-label">Top score</span>
           <span class="kpi-value">{{ s.kpis.topScore | number: '1.1-1' }}</span>
-          <span class="kpi-sub">average {{ s.kpis.averageScore | number: '1.1-1' }} (max ≈ 110)</span>
+          <span class="kpi-sub">average {{ s.kpis.averageScore | number: '1.1-1' }} (max ≈ {{ methodology.maxPossible() | number: '1.0-0' }})</span>
         </div>
         <div class="kpi">
           <span class="kpi-label">Trucking on site</span>
@@ -49,5 +50,6 @@ import { SiteStore } from '../../core/site-store';
 })
 export class KpiStripComponent {
   protected readonly store = inject(SiteStore);
+  protected readonly methodology = inject(MethodologyStore);
   protected pct(n: number, d: number) { return d ? `${Math.round((100 * n) / d)}%` : '—'; }
 }

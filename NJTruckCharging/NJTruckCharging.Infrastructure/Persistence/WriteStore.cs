@@ -11,12 +11,16 @@ public sealed class WriteStore(AppDbContext db, ILogger<WriteStore> logger) : IW
 {
     private const int BatchSize = 1000;
 
-    public async Task ReplaceAllAsync(ParsedWorkbook wb, CancellationToken ct = default)
+    public async Task ReplaceAllAsync(ParsedWorkbook wb, ReimportScoring? scoring = null, CancellationToken ct = default)
     {
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
+            db.ChangeTracker.Clear();
             await using var tx = await db.Database.BeginTransactionAsync(ct);
+            // Serialise with methodology preview/publish so scores are never written from two sources at once.
+            if (!await ScoringLock.TryAcquireAsync(db, ct, timeoutMs: 30_000))
+                throw new InvalidOperationException("A methodology publish or preview is running; retry the import shortly.");
             db.ChangeTracker.AutoDetectChangesEnabled = false;
 
             await db.NearbyFleets.ExecuteDeleteAsync(ct);
@@ -42,9 +46,46 @@ public sealed class WriteStore(AppDbContext db, ILogger<WriteStore> logger) : IW
                 logger.LogInformation("Inserted {Count}/{Total} sites", Math.Min(i + BatchSize, wb.Sites.Count), wb.Sites.Count);
             }
 
+            if (scoring is not null) await WriteReimportScoringAsync(scoring, wb.Sites.Count, ct);
+
             await tx.CommitAsync(ct);
             db.ChangeTracker.AutoDetectChangesEnabled = true;
         });
+    }
+
+    /// <summary>
+    /// Inside the import transaction: stores the re-computed scores of the baseline and active versions, bumps the data
+    /// version (so previews computed on the old data can no longer be published) and logs the re-application.
+    /// </summary>
+    private async Task WriteReimportScoringAsync(ReimportScoring scoring, int siteCount, CancellationToken ct)
+    {
+        db.ChangeTracker.AutoDetectChangesEnabled = true;
+        var state = await db.MethodologyState.FirstOrDefaultAsync(s => s.Id == 1, ct);
+        if (state is null) { state = new MethodologyState { Id = 1, DataVersion = 0 }; db.MethodologyState.Add(state); }
+        state.DataVersion++;
+
+        foreach (var set in scoring.ScoreSets)
+        {
+            await ScoreBulkWriter.ReplaceAsync(db, set.VersionId, set.Rows, ct);
+            var version = await db.MethodologyVersions.FirstAsync(v => v.Id == set.VersionId, ct);
+            version.PreviewRulesHash = version.RulesHash;
+            version.ScoresDataVersion = state.DataVersion;
+            version.PreviewedAtUtc = scoring.Now;
+            version.PreviewSummaryJson = null;
+        }
+
+        if (scoring.ActiveVersionId is { } active)
+        {
+            state.ActiveVersionId = active;
+            state.ActivatedAtUtc = scoring.Now;
+            db.MethodologyActivations.Add(new MethodologyActivation
+            {
+                VersionId = active, PreviousVersionId = active, Reason = ActivationReason.Reimport, AtUtc = scoring.Now,
+                SitesScored = siteCount, DataVersion = state.DataVersion,
+                Note = "Workbook re-import: active methodology re-applied to the new data."
+            });
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     public Task<List<CandidateSite>> LoadSitesForUpdateAsync(CancellationToken ct = default) =>
@@ -53,6 +94,17 @@ public sealed class WriteStore(AppDbContext db, ILogger<WriteStore> logger) : IW
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 
     public Task<bool> HasSitesAsync(CancellationToken ct = default) => db.CandidateSites.AnyAsync(ct);
+
+    public async Task UpdateScoreStatisticsAsync(CancellationToken ct = default)
+    {
+        if (db.Database.ProviderName != "Microsoft.EntityFrameworkCore.SqlServer") return;
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE STATISTICS dbo.CandidateSites (IX_CandidateSites_Score_MilesToExit, IX_CandidateSites_Segment_ComputedRank) WITH FULLSCAN;", ct);
+        });
+    }
 
     public async Task UpdateStatisticsAsync(CancellationToken ct = default)
     {

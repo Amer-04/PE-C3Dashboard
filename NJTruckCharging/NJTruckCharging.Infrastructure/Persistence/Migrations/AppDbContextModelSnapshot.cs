@@ -248,6 +248,9 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                     b.Property<double>("Score")
                         .HasColumnType("float");
 
+                    b.Property<int?>("ScoreVersionId")
+                        .HasColumnType("int");
+
                     b.Property<int>("Segment")
                         .HasColumnType("int");
 
@@ -272,6 +275,9 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("TruckAadtAtExit")
                         .HasColumnType("int");
+
+                    b.Property<double>("TruckDemandPoints")
+                        .HasColumnType("float");
 
                     b.Property<int>("TruckStops2Mi")
                         .HasColumnType("int");
@@ -312,6 +318,123 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                     b.ToTable("CandidateSites", (string)null);
                 });
 
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.CustomDataField", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Categories")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(600)
+                        .HasColumnType("nvarchar(600)");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<double?>("MaxValue")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("MinValue")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("CustomDataFields", (string)null);
+                });
+
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.CustomFieldValue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool?>("BoolValue")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("CategoryValue")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Evidence")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ImportBatch")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<double?>("NumberValue")
+                        .HasColumnType("float");
+
+                    b.Property<string>("SiteId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SiteId");
+
+                    b.HasIndex("FieldKey", "SiteId")
+                        .IsUnique();
+
+                    b.ToTable("CustomFieldValues", (string)null);
+                });
+
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.FeasibilityItem", b =>
                 {
                     b.Property<int>("Id")
@@ -326,6 +449,9 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                     b.Property<string>("Evidence")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateOnly?>("EvidenceDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("ItemKey")
                         .IsRequired()
@@ -343,6 +469,10 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -392,6 +522,45 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                     b.ToTable("Interchanges", (string)null);
                 });
 
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.MethodologyActivation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("DataVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("PreviousVersionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("SitesScored")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VersionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VersionId");
+
+                    b.ToTable("MethodologyActivations", (string)null);
+                });
+
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.MethodologyNote", b =>
                 {
                     b.Property<int>("Id")
@@ -415,6 +584,109 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("MethodologyNotes", (string)null);
+                });
+
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.MethodologyState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ActivatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ActiveVersionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DataVersion")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PreviousActiveVersionId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveVersionId");
+
+                    b.HasIndex("PreviousActiveVersionId");
+
+                    b.ToTable("MethodologyState", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MethodologyState_Singleton", "[Id] = 1");
+                        });
+                });
+
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.MethodologyVersion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BasedOnVersionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ChangeSummary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsBaseline")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("PreviewRulesHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PreviewSummaryJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("PreviewedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("PublishedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RulesHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ScoresDataVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsBaseline")
+                        .IsUnique()
+                        .HasFilter("[IsBaseline] = 1");
+
+                    b.ToTable("MethodologyVersions", (string)null);
                 });
 
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.NearbyFleet", b =>
@@ -537,6 +809,73 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("PowerEdisonSites", (string)null);
+                });
+
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.ResearchHistoryEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("ContactId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Evidence")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateOnly?>("EvidenceDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ItemKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RecordedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SiteId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SiteId", "RecordedAtUtc");
+
+                    b.ToTable("ResearchHistoryEntries", (string)null);
                 });
 
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.SavedSite", b =>
@@ -792,6 +1131,39 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                     b.ToTable("SiteScreeningEntries", (string)null);
                 });
 
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.SiteVersionScore", b =>
+                {
+                    b.Property<int>("MethodologyVersionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SiteId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PointsJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("int");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("float");
+
+                    b.Property<int>("Segment")
+                        .HasColumnType("int");
+
+                    b.Property<double>("TruckDemandPoints")
+                        .HasColumnType("float");
+
+                    b.HasKey("MethodologyVersionId", "SiteId");
+
+                    b.HasIndex("MethodologyVersionId", "Segment", "Rank");
+
+                    b.ToTable("SiteVersionScores", (string)null);
+                });
+
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.CandidateSite", b =>
                 {
                     b.OwnsOne("NJTruckCharging.Domain.Scoring.ScoreBreakdown", "Breakdown", b1 =>
@@ -859,6 +1231,29 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.CustomFieldValue", b =>
+                {
+                    b.HasOne("NJTruckCharging.Domain.Entities.CustomDataField", null)
+                        .WithMany()
+                        .HasForeignKey("FieldKey")
+                        .HasPrincipalKey("Key")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.MethodologyState", b =>
+                {
+                    b.HasOne("NJTruckCharging.Domain.Entities.MethodologyVersion", null)
+                        .WithMany()
+                        .HasForeignKey("ActiveVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("NJTruckCharging.Domain.Entities.MethodologyVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousActiveVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.NearbyFleet", b =>
                 {
                     b.HasOne("NJTruckCharging.Domain.Entities.CandidateSite", "CandidateSite")
@@ -868,6 +1263,82 @@ namespace NJTruckCharging.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("CandidateSite");
+                });
+
+            modelBuilder.Entity("NJTruckCharging.Domain.Entities.SiteVersionScore", b =>
+                {
+                    b.HasOne("NJTruckCharging.Domain.Entities.MethodologyVersion", null)
+                        .WithMany()
+                        .HasForeignKey("MethodologyVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("NJTruckCharging.Domain.Scoring.ScoreBreakdown", "Breakdown", b1 =>
+                        {
+                            b1.Property<int>("SiteVersionScoreMethodologyVersionId")
+                                .HasColumnType("int");
+
+                            b1.Property<string>("SiteVersionScoreSiteId")
+                                .HasColumnType("nvarchar(64)");
+
+                            b1.Property<double>("BusyMultiTenant")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("ExitDistance")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("FarFromTruckRoad")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("FleetsNearby")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("Flood")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("Highlands")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("LargeWarehouses")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("LotShape")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("NoFastCharger")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("NoTruckCharger")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("OpenLand")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("Port")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("PropertyClass")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("TruckStop")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("TruckTraffic")
+                                .HasColumnType("float");
+
+                            b1.Property<double>("TruckingOnSite")
+                                .HasColumnType("float");
+
+                            b1.HasKey("SiteVersionScoreMethodologyVersionId", "SiteVersionScoreSiteId");
+
+                            b1.ToTable("SiteVersionScores");
+
+                            b1.WithOwner()
+                                .HasForeignKey("SiteVersionScoreMethodologyVersionId", "SiteVersionScoreSiteId");
+                        });
+
+                    b.Navigation("Breakdown")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("NJTruckCharging.Domain.Entities.CandidateSite", b =>

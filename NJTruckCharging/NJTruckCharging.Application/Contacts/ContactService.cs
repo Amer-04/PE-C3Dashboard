@@ -7,7 +7,7 @@ namespace NJTruckCharging.Application.Contacts;
 /// Researched decision-maker contacts for candidate sites. Contact details are only ever entered by a
 /// user (optionally with a source URL) — never derived from nearby carriers.
 /// </summary>
-public sealed class ContactService(IReadStore read, ISiteContactStore store, TimeProvider clock)
+public sealed class ContactService(IReadStore read, ISiteContactStore store, IResearchHistoryStore history, TimeProvider clock)
 {
     public async Task<List<SiteContactDto>> ListAsync(string siteId, CancellationToken ct = default)
     {
@@ -70,6 +70,7 @@ public sealed class ContactService(IReadStore read, ISiteContactStore store, Tim
             return (CreateOutcome.CandidateNotFound, null);
 
         var now = clock.GetUtcNow();
+        var recordedBy = Clean(req.RecordedBy) ?? currentUser;
         var entity = new SiteContact
         {
             SiteId = req.SiteId,
@@ -84,16 +85,23 @@ public sealed class ContactService(IReadStore read, ISiteContactStore store, Tim
             ResearchNotes = Clean(req.ResearchNotes),
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
-            CreatedBy = currentUser,
+            CreatedBy = recordedBy,
         };
         if (entity.VerificationStatus == ContactVerificationStatus.Verified)
         {
             entity.LastVerifiedUtc = now;
-            entity.VerifiedBy = currentUser;
+            entity.VerifiedBy = recordedBy;
         }
 
-        await store.AddAsync(entity, ct);
-        await store.SaveChangesAsync(ct);
+        // The contact's Id only exists after the first save; both saves share one transaction.
+        await history.InTransactionAsync(async () =>
+        {
+            await store.AddAsync(entity, ct);
+            await store.SaveChangesAsync(ct);
+            await history.AppendAsync(Entry(entity, ResearchAction.ContactAdded, null, null, recordedBy, now), ct);
+            await history.SaveChangesAsync(ct);
+            return true;
+        }, ct);
         return (CreateOutcome.Created, await GetByIdAsync(entity.Id, ct));
     }
 
@@ -104,6 +112,8 @@ public sealed class ContactService(IReadStore read, ISiteContactStore store, Tim
         if (MissingSource(req.VerificationStatus, req.SourceUrl)) return (UpdateOutcome.SourceRequired, null);
         var entity = await store.FindByIdAsync(id, ct);
         if (entity is null) return (UpdateOutcome.NotFound, null);
+        var previousStatus = entity.VerificationStatus;
+        var recordedBy = Clean(req.RecordedBy) ?? currentUser;
 
         entity.Name = req.Name.Trim();
         entity.Organization = Clean(req.Organization);
@@ -121,14 +131,15 @@ public sealed class ContactService(IReadStore read, ISiteContactStore store, Tim
         {
             // (Re)confirm the verification stamp whenever it is set/kept verified via an edit.
             entity.LastVerifiedUtc = entity.UpdatedAtUtc;
-            entity.VerifiedBy = currentUser;
+            entity.VerifiedBy = recordedBy;
         }
         else if (wasVerified)
         {
             // Moved away from verified: keep the historical stamp but it no longer counts as verified.
         }
 
-        await store.SaveChangesAsync(ct);
+        await history.AppendAsync(Entry(entity, ResearchAction.ContactUpdated, previousStatus, Clean(req.CorrectionNote), recordedBy, entity.UpdatedAtUtc), ct);
+        await store.SaveChangesAsync(ct);   // contact change and its history entry commit together
         return (UpdateOutcome.Updated, await GetByIdAsync(id, ct));
     }
 
@@ -136,12 +147,36 @@ public sealed class ContactService(IReadStore read, ISiteContactStore store, Tim
     {
         var entity = await store.FindByIdAsync(id, ct);
         if (entity is null) return false;
+        // The contact row goes, but the history keeps what it said and that it was removed.
+        await history.AppendAsync(Entry(entity, ResearchAction.ContactRemoved, entity.VerificationStatus, null, null, clock.GetUtcNow()), ct);
         store.Remove(entity);
         await store.SaveChangesAsync(ct);
         return true;
     }
 
     private static string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+
+    private static ResearchHistoryEntry Entry(SiteContact c, ResearchAction action, ContactVerificationStatus? previous,
+        string? note, string? recordedBy, DateTimeOffset at) => new()
+    {
+        SiteId = c.SiteId,
+        Subject = ResearchSubject.Contact,
+        Action = action,
+        ContactId = c.Id,
+        PreviousStatus = previous?.ToString(),
+        Status = action == ResearchAction.ContactRemoved ? "Removed" : c.VerificationStatus.ToString(),
+        // What the contact record said at this moment (name, role, organisation).
+        Evidence = Truncate(string.Join(" · ", new[] { c.Name, c.ContactType.ToString(), c.JobTitle, c.Organization }
+            .Where(x => !string.IsNullOrWhiteSpace(x))), 4000),
+        SourceUrl = c.SourceUrl,
+        EvidenceDate = c.LastVerifiedUtc is { } v && c.VerificationStatus == ContactVerificationStatus.Verified
+            ? DateOnly.FromDateTime(v.UtcDateTime) : null,
+        Note = note,
+        RecordedBy = recordedBy,
+        RecordedAtUtc = at
+    };
+
+    private static string Truncate(string v, int max) => v.Length <= max ? v : v[..max];
 
     private static SiteContactDto Project(SiteContact c) => new(
         c.Id, c.SiteId, c.Name, c.Organization, c.JobTitle, c.ContactType,

@@ -27,7 +27,11 @@ public enum SuitabilityBasis
     /// <summary>A reviewer recorded a verdict with evidence (feasibility review or verified contact).</summary>
     Verified = 3,
     /// <summary>Entered by the team but not yet verified (e.g. an unverified contact lead).</summary>
-    Unverified = 4
+    Unverified = 4,
+    /// <summary>Recorded as Verified without the required evidence text, source URL or evidence date.</summary>
+    InsufficientEvidence = 5,
+    /// <summary>The reviewer recorded that sources disagree.</summary>
+    Conflicting = 6
 }
 
 public sealed record SuitabilityItemDto(
@@ -100,18 +104,33 @@ public static partial class SiteSuitability
         IReadOnlyDictionary<FeasibilityItemKey, FeasibilityItem> feas,
         IReadOnlyList<SiteContact> contacts)
     {
-        FeasibilityItem? F(FeasibilityItemKey k) => feas.TryGetValue(k, out var f) && f.Status != FeasibilityStatus.Unknown ? f : null;
+        // Only a documented verdict (evidence text, source URL, evidence date — Research.ResearchQuality.IsDocumented)
+        // or a recorded concern feeds an answer. An undocumented Verified verdict or a Conflicting one is set aside
+        // here (answered from source data / estimates) and the item is then labelled Insufficient evidence or
+        // Conflicting below — the record is kept and shown, never treated as verified.
+        var setAside = new Dictionary<FeasibilityItemKey, FeasibilityItem>();
+        FeasibilityItem? F(FeasibilityItemKey k)
+        {
+            if (!feas.TryGetValue(k, out var f) || f.Status == FeasibilityStatus.Unknown) return null;
+            if (f.Status == FeasibilityStatus.Conflicting || (f.Status == FeasibilityStatus.Verified && !Research.ResearchQuality.IsDocumented(f)))
+            {
+                setAside[k] = f;
+                return null;
+            }
+            return f;
+        }
         static string Ev(FeasibilityItem f) => string.IsNullOrWhiteSpace(f.Evidence) ? "no evidence text recorded" : f.Evidence!;
 
         var items = new List<SuitabilityItemDto>
         {
-            Identity(s, F(FeasibilityItemKey.ParcelIdentity), Ev),
-            Highway(s, F(FeasibilityItemKey.EligibleHighwayAccess), Ev),
-            Land(s, F(FeasibilityItemKey.UsableLand), Ev),
-            Capacity(s, F(FeasibilityItemKey.TruckParkingCapacity), Ev),
-            TruckSpaces(s, F(FeasibilityItemKey.TruckParkingCapacity), Ev),
-            Access(s, F(FeasibilityItemKey.TruckEntranceAccess), F(FeasibilityItemKey.TurningManeuveringSpace), Ev),
-            Power(s, F(FeasibilityItemKey.ElectricalService), Ev),
+            Flag(Identity(s, F(FeasibilityItemKey.ParcelIdentity), Ev), setAside, FeasibilityItemKey.ParcelIdentity),
+            Flag(Highway(s, F(FeasibilityItemKey.EligibleHighwayAccess), Ev), setAside, FeasibilityItemKey.EligibleHighwayAccess),
+            Flag(Land(s, F(FeasibilityItemKey.UsableLand), Ev), setAside, FeasibilityItemKey.UsableLand),
+            Flag(Capacity(s, F(FeasibilityItemKey.TruckParkingCapacity), Ev), setAside, FeasibilityItemKey.TruckParkingCapacity),
+            Flag(TruckSpaces(s, F(FeasibilityItemKey.TruckParkingCapacity), Ev), setAside, FeasibilityItemKey.TruckParkingCapacity),
+            Flag(Access(s, F(FeasibilityItemKey.TruckEntranceAccess), F(FeasibilityItemKey.TurningManeuveringSpace), Ev), setAside,
+                FeasibilityItemKey.TruckEntranceAccess, FeasibilityItemKey.TurningManeuveringSpace),
+            Flag(Power(s, F(FeasibilityItemKey.ElectricalService), Ev), setAside, FeasibilityItemKey.ElectricalService),
             Contact(s, contacts),
         };
 
@@ -298,6 +317,31 @@ public static partial class SiteSuitability
             : Rate(nameof(Capacity), q, est.Value, SuitabilityBasis.Estimate, $"~{est} spaces (preliminary estimate)",
                 $"Desktop screen at ~{SiteFilter.EstimatedTrailersPerOpenAcre:0} trailer stalls per open acre — not a verified or buildable count.",
                 "Count the possible parking spaces on satellite imagery");
+    }
+
+    /// <summary>Labels an item whose verdict was set aside: Conflicting first, then Insufficient evidence.</summary>
+    private static SuitabilityItemDto Flag(SuitabilityItemDto item, IReadOnlyDictionary<FeasibilityItemKey, FeasibilityItem> setAside,
+        params FeasibilityItemKey[] keys)
+    {
+        var flagged = keys.Where(setAside.ContainsKey).Select(k => setAside[k]).ToList();
+        if (flagged.Count == 0) return item;
+        var conflict = flagged.FirstOrDefault(f => f.Status == FeasibilityStatus.Conflicting);
+        if (conflict is not null)
+            return item with
+            {
+                Answer = SuitabilityAnswer.NeedsCheck, Basis = SuitabilityBasis.Conflicting,
+                Headline = "Conflicting evidence recorded",
+                Detail = $"Reviewer: {conflict.Evidence}. Without the review: {item.Headline}",
+                NextStep = "Resolve the conflicting evidence and record a documented verdict"
+            };
+        var f = flagged[0];
+        return item with
+        {
+            Answer = SuitabilityAnswer.NeedsCheck, Basis = SuitabilityBasis.InsufficientEvidence,
+            Headline = "Insufficient evidence — recorded as verified",
+            Detail = $"Recorded as Verified without {Research.ResearchQuality.MissingText(f)}: {(string.IsNullOrWhiteSpace(f.Evidence) ? "no evidence text" : f.Evidence)}. Without the review: {item.Headline}",
+            NextStep = "Add the evidence text, source URL and evidence date to the existing verdict"
+        };
     }
 
     private static SuitabilityItemDto Rate(string key, string q, int n, SuitabilityBasis basis, string what, string detail, string? next) =>

@@ -127,5 +127,10 @@ public class CandidateSite
     public double Score { get; set; }                        // == Breakdown.Total
     public int ComputedRank { get; set; }                    // rank by Score within the segment
 
+    /// <summary>Methodology version whose results are materialised in Score / ComputedRank / Breakdown (the active one).</summary>
+    public int? ScoreVersionId { get; set; }
+    /// <summary>Sum of the active methodology's "Truck demand" criteria (persisted: custom criteria have no column).</summary>
+    public double TruckDemandPoints { get; set; }
+
     public List<NearbyFleet> NearbyFleets { get; set; } = [];
 }

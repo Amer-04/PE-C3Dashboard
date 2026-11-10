@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, effect, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { MethodologyStore } from '../../core/methodology-store';
 import {
   DEFAULT_FILTER, IOS_LABELS, IosClassification, PagedResult, SCREENING_DECISIONS, SCREENING_LABELS, ScreeningCounts,
   ScreeningDecision, ScreeningSummary, SiteDetail, SiteFilter, SiteListItem, SiteScreening,
@@ -10,6 +11,9 @@ import { SavedStore } from '../../core/saved-store';
 import { CompareToggleComponent } from '../compare/compare-toggle.component';
 import { SatelliteMapComponent } from './satellite-map.component';
 import { ScreeningPanelComponent } from './screening-panel.component';
+import { ResearchReviewComponent } from './research-review.component';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 
 /** Plain-language status text that never presents an unchecked value as clear or verified. */
 export function floodText(d: Pick<SiteDetail, 'floodZone100Yr'>): { text: string; tone: string } {
@@ -22,7 +26,11 @@ export function contaminationText(d: Pick<SiteDetail, 'knownContaminatedSites'>)
   if (d.knownContaminatedSites === 0) return { text: 'No known contaminated sites (desktop screen)', tone: 'clear' };
   return { text: `${d.knownContaminatedSites} known contaminated site(s) on/near parcel`, tone: 'flag' };
 }
-export function verdictText(status: string, evidence: string | null): { text: string; tone: string } {
+export function verdictText(status: string, evidence: string | null, state?: string): { text: string; tone: string } {
+  // A Verified verdict without evidence text, source URL and evidence date is never presented as verified.
+  if (status === 'Verified' && state === 'InsufficientEvidence')
+    return { text: evidence ? `Insufficient evidence — ${evidence}` : 'Insufficient evidence', tone: 'unknown' };
+  if (status === 'Conflicting') return { text: evidence ? `Conflicting evidence — ${evidence}` : 'Conflicting evidence', tone: 'concern' };
   if (status === 'Verified') return { text: evidence ? `Verified — ${evidence}` : 'Verified', tone: 'verified' };
   if (status === 'Concern') return { text: evidence ? `Concern — ${evidence}` : 'Concern', tone: 'concern' };
   return { text: 'Not reviewed', tone: 'unknown' };
@@ -34,9 +42,16 @@ export function verdictText(status: string, evidence: string | null): { text: st
  */
 @Component({
   selector: 'app-screening-page',
-  imports: [DecimalPipe, RouterLink, SatelliteMapComponent, ScreeningPanelComponent, CompareToggleComponent],
+  imports: [DecimalPipe, RouterLink, SatelliteMapComponent, ScreeningPanelComponent, CompareToggleComponent, ResearchReviewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <nav class="view-tabs" role="tablist" aria-label="Screening views">
+      <a role="tab" routerLink="/screening" [queryParams]="{ view: null }" queryParamsHandling="merge" [class.on]="view() === 'screening'" [attr.aria-selected]="view() === 'screening'">Screening</a>
+      <a role="tab" routerLink="/screening" [queryParams]="{ view: 'review' }" queryParamsHandling="merge" [class.on]="view() === 'review'" [attr.aria-selected]="view() === 'review'">Research review</a>
+    </nav>
+    @if (view() === 'review') {
+      <app-research-review />
+    } @else {
     <section class="panel scr-top">
       <div class="panel-head">
         <div>
@@ -167,8 +182,8 @@ export function verdictText(status: string, evidence: string | null): { text: st
             <dt>Highway &amp; exit</dt>
             <dd>@if (d.summary.nearestHighway) { {{ d.summary.nearestHighway }} exit {{ d.summary.nearestExit }} · {{ d.summary.milesToExit | number: '1.2-2' }} mi }
               @else { <span class="muted">Unknown</span> }</dd>
-            <dt>Truck entrance</dt><dd [attr.data-tone]="v(d.truckEntranceStatus, d.truckEntranceEvidence).tone">{{ v(d.truckEntranceStatus, d.truckEntranceEvidence).text }}</dd>
-            <dt>Electrical</dt><dd [attr.data-tone]="v(d.electricalStatus, d.electricalEvidence).tone">{{ v(d.electricalStatus, d.electricalEvidence).text }}
+            <dt>Truck entrance</dt><dd [attr.data-tone]="v(d.truckEntranceStatus, d.truckEntranceEvidence, d.truckEntranceEvidenceState).tone">{{ v(d.truckEntranceStatus, d.truckEntranceEvidence, d.truckEntranceEvidenceState).text }}</dd>
+            <dt>Electrical</dt><dd [attr.data-tone]="v(d.electricalStatus, d.electricalEvidence, d.electricalEvidenceState).tone">{{ v(d.electricalStatus, d.electricalEvidence, d.electricalEvidenceState).text }}
               <br /><small class="muted">Utility: {{ d.summary.utility || 'unknown' }}</small></dd>
             <dt>IOS</dt><dd [attr.data-tone]="d.summary.iosBasis === 'ManualReview' ? (d.summary.iosClassification === 'Confirmed' ? 'verified' : 'concern') : 'source'">
               {{ iosLabel(d.summary.iosClassification) }}
@@ -189,11 +204,15 @@ export function verdictText(status: string, evidence: string | null): { text: st
         </section>
       }
     </div>
+    }
   `,
 })
 export class ScreeningPage {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  /** Which view is shown: the screening queue, or the research review queue (?view=review). */
+  protected readonly view = toSignal(this.route.queryParamMap.pipe(map(q => q.get('view') === 'review' ? 'review' : 'screening')),
+    { initialValue: this.route.snapshot.queryParamMap.get('view') === 'review' ? 'review' : 'screening' });
   protected readonly saved = inject(SavedStore);
 
   protected readonly decisionOptions = SCREENING_DECISIONS;
@@ -227,7 +246,10 @@ export class ScreeningPage {
     if (site) { this.search.set(site); this.topN.set(null); this.pendingSelect = site; }
     this.reload();
     this.loadSummary();
+    effect(() => { if (this.methodology.epoch() > 0) untracked(() => { this.reload(); this.loadSummary(); }); });
   }
+
+  private readonly methodology = inject(MethodologyStore);
 
   /** Counts for the current scope: the selected segment, else all segments (both already limited to top-N). */
   protected readonly scoped = computed<ScreeningCounts | null>(() => {

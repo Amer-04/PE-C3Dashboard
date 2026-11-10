@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, effect, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { SavedStore } from '../../core/saved-store';
+import { MethodologyStore } from '../../core/methodology-store';
 import { SavedCardComponent } from './saved-card.component';
 
 /** Bookmarked candidate sites — sites flagged during discovery for closer evaluation. */
@@ -39,7 +40,12 @@ import { SavedCardComponent } from './saved-card.component';
 export class SavedPage {
   protected readonly store = inject(SavedStore);
 
-  constructor() { this.reload(); }
+  private readonly methodology = inject(MethodologyStore);
+
+  constructor() {
+    this.reload();
+    effect(() => { if (this.methodology.epoch() > 0) untracked(() => this.reload()); });
+  }
 
   protected reload() {
     this.store.loadSaved();

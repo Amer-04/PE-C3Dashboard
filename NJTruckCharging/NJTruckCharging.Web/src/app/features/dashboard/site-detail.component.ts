@@ -3,18 +3,21 @@ import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { IOS_LABELS, IosClassification, ScoreLine } from '../../core/models';
 import { SiteStore } from '../../core/site-store';
+import { MethodologyStore } from '../../core/methodology-store';
+import { CustomValuesPanelComponent } from '../methodology/custom-values-panel.component';
 import { SavedStore } from '../../core/saved-store';
 import { CompareStore } from '../../core/compare-store';
 import { ContactsPanelComponent } from '../contacts/contacts-panel.component';
 import { FeasibilityPanelComponent } from '../feasibility/feasibility-panel.component';
 import { scoreCss } from '../../shared/score-color';
+import { websiteLink } from '../../shared/external-link';
 import { CompareToggleComponent } from '../compare/compare-toggle.component';
 import { ScreeningPanelComponent } from '../screening/screening-panel.component';
 import { SiteSummaryComponent } from './site-summary.component';
 
 @Component({
   selector: 'app-site-detail',
-  imports: [DecimalPipe, CurrencyPipe, RouterLink, ContactsPanelComponent, FeasibilityPanelComponent, CompareToggleComponent, ScreeningPanelComponent, SiteSummaryComponent],
+  imports: [DecimalPipe, CurrencyPipe, RouterLink, ContactsPanelComponent, FeasibilityPanelComponent, CompareToggleComponent, ScreeningPanelComponent, SiteSummaryComponent, CustomValuesPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (store.selected(); as d) {
@@ -31,7 +34,10 @@ import { SiteSummaryComponent } from './site-summary.component';
         <div class="score-hero">
           <span class="score-swatch" [style.background]="color(d.summary.score)"></span>
           <span class="score-big">{{ d.summary.score | number: '1.1-1' }}</span>
-          <span class="muted">/ ~110 · truck demand {{ d.truckDemandPoints | number: '1.1-1' }} / 35</span>
+          <span class="muted">/ ~{{ methodology.maxPossible() | number: '1.0-0' }} · truck demand {{ d.truckDemandPoints | number: '1.1-1' }} / {{ methodology.demandMax() | number: '1.0-0' }}</span>
+          @if (d.methodologyVersionId) {
+            <a class="method-chip" routerLink="/methodology" [title]="'Scores from methodology ' + (d.methodologyVersionName ?? '')">v{{ d.methodologyVersionId }}</a>
+          }
         </div>
 
         <div class="flags">
@@ -63,7 +69,7 @@ import { SiteSummaryComponent } from './site-summary.component';
           <a class="btn" [href]="d.satelliteUrl" target="_blank" rel="noopener">Satellite ↗</a>
           <a class="btn" [href]="d.googleMapsUrl" target="_blank" rel="noopener">Google Maps ↗</a>
           <a class="btn" [href]="d.streetViewUrl" target="_blank" rel="noopener">Street View ↗</a>
-          @if (d.businessWebsite) { <a class="btn" [href]="d.businessWebsite" target="_blank" rel="noopener">Business site ↗</a> }
+          @if (website(); as w) { <a class="btn" [href]="w.href" target="_blank" rel="noopener noreferrer" [title]="w.href">Business site ↗</a> }
         </div>
 
         <app-site-summary [summary]="d.suitability" [validation]="d.validation" />
@@ -117,14 +123,14 @@ import { SiteSummaryComponent } from './site-summary.component';
               <br /><small class="muted">Source data alone: {{ iosLabel(d.iosDerivedClassification) }}</small>
             }</dd>
           <dt>Truck entrance</dt>
-          <dd><span class="ev-badge" [attr.data-v]="d.truckEntranceStatus">{{ statusLabel(d.truckEntranceStatus) }}</span>
+          <dd><span class="ev-badge" [attr.data-v]="badge(d.truckEntranceStatus, d.truckEntranceEvidenceState)">{{ statusLabel(d.truckEntranceStatus, d.truckEntranceEvidenceState) }}</span>
             @if (d.truckEntranceEvidence) { <br /><small class="muted">{{ d.truckEntranceEvidence }}</small> }</dd>
           <dt>Electrical</dt>
-          <dd><span class="ev-badge" [attr.data-v]="d.electricalStatus">{{ statusLabel(d.electricalStatus) }}</span>
+          <dd><span class="ev-badge" [attr.data-v]="badge(d.electricalStatus, d.electricalEvidenceState)">{{ statusLabel(d.electricalStatus, d.electricalEvidenceState) }}</span>
             @if (d.electricalEvidence) { <br /><small class="muted">{{ d.electricalEvidence }}</small> }</dd>
           <dt>Verified parking</dt>
           <dd>@if (d.parkingStatus !== 'Unknown') {
-              <span class="ev-badge" [attr.data-v]="d.parkingStatus">{{ d.parkingStatus }}</span>
+              <span class="ev-badge" [attr.data-v]="badge(d.parkingStatus, d.parkingEvidenceState)">{{ statusLabel(d.parkingStatus, d.parkingEvidenceState) }}</span>
               @if (d.verifiedParkingEvidence) { <small class="muted"> — {{ d.verifiedParkingEvidence }}</small> }
             } @else { <span class="muted">Not verified</span> }</dd>
           <dt>Decision-maker</dt>
@@ -156,6 +162,7 @@ import { SiteSummaryComponent } from './site-summary.component';
         <app-contacts-panel [siteId]="d.summary.siteId" (changed)="store.refreshDetail()" />
 
         <app-feasibility-panel [siteId]="d.summary.siteId" (changed)="store.refreshDetail()" />
+        <app-custom-values-panel [siteId]="d.summary.siteId" (changed)="store.refreshDetail()" />
 
         @if (d.nearbyFleets.length) {
           <h3>Nearby carriers within 5 mi</h3>
@@ -182,8 +189,11 @@ import { SiteSummaryComponent } from './site-summary.component';
 })
 export class SiteDetailComponent {
   protected readonly store = inject(SiteStore);
+  protected readonly methodology = inject(MethodologyStore);
   protected readonly saved = inject(SavedStore);
   protected readonly compare = inject(CompareStore);
+  /** Listed business website as a safe link (same helper as the ranked table); null when not a usable address. */
+  protected readonly website = computed(() => websiteLink(this.store.selected()?.businessWebsite));
   protected readonly positive = computed(() => (this.store.selected()?.scoreLines ?? []).filter(l => l.max > 0));
   protected readonly penalties = computed(() => (this.store.selected()?.scoreLines ?? []).filter(l => l.max === 0 && l.points < 0));
   protected readonly color = scoreCss;
@@ -194,5 +204,10 @@ export class SiteDetailComponent {
 
   protected shorten(v: string | null) { return v && v.length > 40 ? v.slice(0, 40) + '…' : v; }
   protected iosLabel(c: IosClassification) { return IOS_LABELS[c] ?? c; }
-  protected statusLabel(s: string) { return s === 'Unknown' ? 'Not reviewed' : s; }
+  /** A Verified verdict without evidence text, source URL and evidence date is shown as "Insufficient evidence". */
+  protected statusLabel(s: string, state?: string) {
+    if (state === 'InsufficientEvidence') return 'Insufficient evidence';
+    return s === 'Unknown' ? 'Not reviewed' : s === 'Conflicting' ? 'Conflicting evidence' : s;
+  }
+  protected badge(s: string, state?: string) { return state === 'InsufficientEvidence' ? 'Insufficient' : s; }
 }

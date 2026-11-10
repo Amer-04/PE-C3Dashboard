@@ -15,7 +15,7 @@ public partial class ApiIntegrationTests
     private static async Task SeedResearchStates(HttpClient c)
     {
         async Task Feas(string siteId, string key, string status, string evidence) =>
-            Assert.Equal(HttpStatusCode.OK, (await c.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = key, status, evidence })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await c.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = key, status, evidence, sourceUrl = Src, evidenceDate = "2026-10-01", recordedBy = "Tester" })).StatusCode);
         async Task Contact(string siteId, string name, string type, string vs, string? src) =>
             Assert.Equal(HttpStatusCode.Created, (await c.PostAsJsonAsync("/api/contacts", new
             {
@@ -389,12 +389,39 @@ public partial class ApiIntegrationTests
             Assert.Equal("8008748925", r[Array.IndexOf(csv[0], "business_phone_listed_in_source")]);
 
             // A reviewer's evidence-backed business-at-address check marks the listing as confirmed (phone stays unverified).
-            await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0009", itemKey = "BusinessAtAddress", status = "Verified", evidence = "Signage matches (Street View 2026-10)" });
+            await client.PutAsJsonAsync("/api/feasibility", new { siteId = "TEST-0009", itemKey = "BusinessAtAddress", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "Signage matches (Street View 2026-10)" });
             var after = (await Json(await client.GetAsync("/api/sites?search=TEST-0009&page=1&pageSize=5"))).GetProperty("items")
                 .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == "TEST-0009");
             Assert.True(after.GetProperty("businessListingConfirmed").GetBoolean());
         }
         finally { await _factory.SetListingAsync("TEST-0009", null, null, null, null, null); }
+    }
+
+    [Fact]
+    public async Task Table_row_carries_the_same_business_website_as_site_details()
+    {
+        var client = Client();
+        await _factory.SetListingAsync("TEST-0010", "The UPS Store; UPS Lawnside Hub", "(856) 573-6313", null, null, null);
+        await _factory.SetBusinessWebsiteAsync("TEST-0010", "http://www.theupsstore.com");
+        try
+        {
+            var row = (await Json(await client.GetAsync("/api/sites?search=TEST-0010&page=1&pageSize=5"))).GetProperty("items")
+                .EnumerateArray().Single(i => i.GetProperty("siteId").GetString() == "TEST-0010");
+            var items = (await Json(await client.GetAsync("/api/sites?page=1&pageSize=100"))).GetProperty("items").EnumerateArray().ToList();
+            Assert.NotEmpty(items);
+            var detail = await Json(await client.GetAsync($"/api/sites/{row.GetProperty("id").GetInt32()}"));
+            Assert.Equal("TEST-0010", detail.GetProperty("summary").GetProperty("siteId").GetString());
+            Assert.Equal("http://www.theupsstore.com", row.GetProperty("businessWebsite").GetString());
+            Assert.Equal(detail.GetProperty("businessWebsite").GetString(), row.GetProperty("businessWebsite").GetString());
+            // Other rows don't pick up this site's website.
+            Assert.All(items.Where(i => i.GetProperty("siteId").GetString() != "TEST-0010"),
+                i => Assert.NotEqual("http://www.theupsstore.com", i.GetProperty("businessWebsite").GetString()));
+        }
+        finally
+        {
+            await _factory.SetBusinessWebsiteAsync("TEST-0010", null);
+            await _factory.SetListingAsync("TEST-0010", null, null, null, null, null);
+        }
     }
 
     /// <summary>Minimal RFC-4180 reader (quoted fields, doubled quotes, embedded commas/newlines).</summary>

@@ -5,8 +5,11 @@ namespace NJTruckCharging.Application.Abstractions;
 
 public interface IWriteStore
 {
-    /// <summary>Deletes all imported data and inserts the parsed workbook.</summary>
-    Task ReplaceAllAsync(ParsedWorkbook workbook, CancellationToken ct = default);
+    /// <summary>
+    /// Deletes all imported data and inserts the parsed workbook. With <paramref name="scoring"/>, the re-computed
+    /// methodology scores are written in the same transaction (the live columns are already set on the sites).
+    /// </summary>
+    Task ReplaceAllAsync(ParsedWorkbook workbook, ReimportScoring? scoring = null, CancellationToken ct = default);
 
     /// <summary>Loads every candidate site with change tracking, for re-scoring.</summary>
     Task<List<CandidateSite>> LoadSitesForUpdateAsync(CancellationToken ct = default);
@@ -21,4 +24,11 @@ public interface IWriteStore
     /// 180s timeouts). No-op on providers other than SQL Server.
     /// </summary>
     Task UpdateStatisticsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// After a methodology publish only Score/ComputedRank changed: refresh just the two score indexes' statistics
+    /// (narrow keys → small memory grant) instead of a FULLSCAN of every column of the wide CandidateSites table, which
+    /// waited ~75 s for memory on a memory-starved LocalDB.
+    /// </summary>
+    Task UpdateScoreStatisticsAsync(CancellationToken ct = default);
 }

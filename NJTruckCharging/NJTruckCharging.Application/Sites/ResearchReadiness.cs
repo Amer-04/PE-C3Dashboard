@@ -13,10 +13,14 @@ public enum SiteEvidence
     Unknown = 0,
     /// <summary>Some research recorded (screening or feasibility checks), but the parcel is not verified yet.</summary>
     Preliminary = 1,
-    /// <summary>A reviewer verified the official parcel identification, with evidence.</summary>
+    /// <summary>A reviewer verified the official parcel identification with documented evidence (evidence text,
+    /// source URL and evidence date — <see cref="Research.ResearchQuality.IsDocumented"/>).</summary>
     Verified = 2,
-    /// <summary>A reviewer recorded a parcel or business-at-address discrepancy.</summary>
-    Mismatch = 3
+    /// <summary>A reviewer recorded a parcel or business-at-address discrepancy (Concern or Conflicting).</summary>
+    Mismatch = 3,
+    /// <summary>The parcel is recorded as Verified but without the required evidence text, source URL or evidence
+    /// date (e.g. a record made before Phase 1). Kept as recorded; never shown as Verified.</summary>
+    InsufficientEvidence = 4
 }
 
 /// <summary>
@@ -61,10 +65,14 @@ public static class ResearchReadiness
     public static SiteEvidence Evidence(IEnumerable<FeasibilityItem> siteItems, ScreeningDecision decision)
     {
         var reviewed = siteItems.Where(f => f.Status != FeasibilityStatus.Unknown).ToList();
-        if (reviewed.Any(f => (f.ItemKey is ParcelKey or BusinessKey) && f.Status == FeasibilityStatus.Concern))
+        // A discrepancy is never hidden, documented or not.
+        if (reviewed.Any(f => (f.ItemKey is ParcelKey or BusinessKey) && f.Status is FeasibilityStatus.Concern or FeasibilityStatus.Conflicting))
             return SiteEvidence.Mismatch;
-        if (reviewed.Any(f => f.ItemKey == ParcelKey && f.Status == FeasibilityStatus.Verified && !string.IsNullOrEmpty(f.Evidence)))
+        var parcelVerified = reviewed.Where(f => f.ItemKey == ParcelKey && f.Status == FeasibilityStatus.Verified).ToList();
+        if (parcelVerified.Any(Research.ResearchQuality.IsDocumented))
             return SiteEvidence.Verified;
+        if (parcelVerified.Count > 0)
+            return SiteEvidence.InsufficientEvidence;
         return reviewed.Count > 0 || decision != ScreeningDecision.NotReviewed ? SiteEvidence.Preliminary : SiteEvidence.Unknown;
     }
 
@@ -122,6 +130,7 @@ public static class ResearchReadiness
                 "preliminary" => SiteEvidence.Preliminary,
                 "mismatch" => SiteEvidence.Mismatch,
                 "unknown" => SiteEvidence.Unknown,
+                "insufficient" => SiteEvidence.InsufficientEvidence,
                 _ => null
             }).Where(x => x is not null).Select(x => x!.Value).Distinct().ToArray();
 
@@ -136,7 +145,7 @@ public static class ResearchReadiness
                 _ => null
             }).Where(x => x is not null).Select(x => x!.Value).Distinct().ToArray();
 
-    public static string Label(SiteEvidence e) => e.ToString();
+    public static string Label(SiteEvidence e) => e == SiteEvidence.InsufficientEvidence ? "Insufficient evidence" : e.ToString();
 
     public static string Label(ContactReadiness r) => r switch
     {
@@ -152,15 +161,23 @@ public static class ResearchReadiness
         IReadOnlyCollection<SiteEvidence> wanted, IQueryable<FeasibilityItem> feas, IQueryable<SiteScreening> screenings)
     {
         bool wM = wanted.Contains(SiteEvidence.Mismatch), wV = wanted.Contains(SiteEvidence.Verified),
-             wP = wanted.Contains(SiteEvidence.Preliminary), wU = wanted.Contains(SiteEvidence.Unknown);
-        const FeasibilityStatus unknown = FeasibilityStatus.Unknown, verified = FeasibilityStatus.Verified, concern = FeasibilityStatus.Concern;
+             wP = wanted.Contains(SiteEvidence.Preliminary), wU = wanted.Contains(SiteEvidence.Unknown),
+             wI = wanted.Contains(SiteEvidence.InsufficientEvidence);
+        const FeasibilityStatus unknown = FeasibilityStatus.Unknown, verified = FeasibilityStatus.Verified,
+            concern = FeasibilityStatus.Concern, conflicting = FeasibilityStatus.Conflicting;
         const ScreeningDecision notReviewed = ScreeningDecision.NotReviewed;
+        // Same rule as ResearchQuality.IsDocumented: evidence text, source URL and evidence date.
         return s =>
-            (wM && feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && f.Status == concern)) ||
-            (wV && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && f.Status == concern)
-                && feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified && f.Evidence != null && f.Evidence != "")) ||
-            (wP && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && f.Status == concern)
-                && !feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified && f.Evidence != null && f.Evidence != "")
+            (wM && feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))) ||
+            (wV && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))
+                && feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified
+                                 && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != "")) ||
+            (wI && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))
+                && !feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified
+                                  && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != "")
+                && feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified)) ||
+            (wP && !feas.Any(f => f.SiteId == s.SiteId && (f.ItemKey == ParcelKey || f.ItemKey == BusinessKey) && (f.Status == concern || f.Status == conflicting))
+                && !feas.Any(f => f.SiteId == s.SiteId && f.ItemKey == ParcelKey && f.Status == verified)
                 && (feas.Any(f => f.SiteId == s.SiteId && f.Status != unknown) || screenings.Any(x => x.SiteId == s.SiteId && x.Decision != notReviewed))) ||
             (wU && !feas.Any(f => f.SiteId == s.SiteId && f.Status != unknown) && !screenings.Any(x => x.SiteId == s.SiteId && x.Decision != notReviewed));
     }

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { CONTACT_READINESS, SCREENING_DECISIONS, SEGMENT_COUNTIES, SITE_EVIDENCE, SiteFilter } from '../../core/models';
+import { CONTACT_READINESS, RESEARCH_STAGES, SCREENING_DECISIONS, SEGMENT_COUNTIES, SITE_EVIDENCE, SiteFilter } from '../../core/models';
 import { SiteStore } from '../../core/site-store';
+import { MethodologyStore } from '../../core/methodology-store';
 
 @Component({
   selector: 'app-filter-panel',
@@ -46,7 +47,7 @@ import { SiteStore } from '../../core/site-store';
 
       <label class="field">
         <span>Minimum score <b>{{ f().minScore ?? 0 }}</b></span>
-        <input type="range" min="0" max="110" step="5" [value]="f().minScore ?? 0"
+        <input type="range" min="0" [max]="methodology.maxPossible()" step="5" [value]="f().minScore ?? 0"
                (change)="store.patch({ minScore: +val($event) || null })" />
       </label>
 
@@ -110,6 +111,17 @@ import { SiteStore } from '../../core/site-store';
           }
         </div>
         <small class="hint">From the team's research records only — a high C3 score never verifies a site or contact.</small>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>Research completeness</legend>
+        <div class="chips">
+          @for (o of researchOptions; track o.token) {
+            <button type="button" class="chip" [class.on]="f().researchStages.includes(o.token)"
+                    [attr.aria-pressed]="f().researchStages.includes(o.token)" [title]="o.hint" (click)="toggle('researchStages', o.token)">{{ o.label }}</button>
+          }
+        </div>
+        <small class="hint">Eight core verification checks. Separate from the C3 score.</small>
       </fieldset>
 
       <fieldset class="field">
@@ -177,6 +189,7 @@ import { SiteStore } from '../../core/site-store';
 })
 export class FilterPanelComponent {
   protected readonly store = inject(SiteStore);
+  protected readonly methodology = inject(MethodologyStore);
   protected readonly f = this.store.filter;
   protected readonly segments = [1, 2, 3, 4, 5, 6];
   protected readonly counties = SEGMENT_COUNTIES;
@@ -205,8 +218,9 @@ export class FilterPanelComponent {
   protected readonly screeningOptions = SCREENING_DECISIONS;
   protected readonly evidenceOptions = SITE_EVIDENCE;
   protected readonly contactOptions = CONTACT_READINESS;
+  protected readonly researchOptions = RESEARCH_STAGES;
 
-  protected toggle(key: 'evidenceStates' | 'contactStates', token: string) {
+  protected toggle(key: 'evidenceStates' | 'contactStates' | 'researchStages', token: string) {
     const cur = this.f()[key];
     this.store.patch({ [key]: cur.includes(token) ? cur.filter(c => c !== token) : [...cur, token] } as Partial<SiteFilter>);
   }

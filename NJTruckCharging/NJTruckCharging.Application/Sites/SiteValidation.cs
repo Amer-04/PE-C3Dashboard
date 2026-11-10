@@ -11,9 +11,13 @@ public enum ValidationStatus
     Unknown = 0,
     /// <summary>Only public-record/source data or an unverified lead — not checked by the team.</summary>
     Unconfirmed = 1,
+    /// <summary>A documented Verified verdict (evidence text, source URL and evidence date).</summary>
     Verified = 2,
-    /// <summary>A reviewer recorded a discrepancy or concern.</summary>
-    Mismatch = 3
+    /// <summary>A reviewer recorded a discrepancy, concern or conflicting evidence.</summary>
+    Mismatch = 3,
+    /// <summary>Recorded as Verified without the required evidence text, source URL or evidence date. Kept as
+    /// recorded, never shown as Verified.</summary>
+    InsufficientEvidence = 4
 }
 
 public sealed record ValidationFactDto(string Label, string Value);
@@ -84,13 +88,22 @@ public static partial class SiteValidation
         ValidationStatus.Verified => "Verified",
         ValidationStatus.Mismatch => mismatchWord,
         ValidationStatus.Unconfirmed => "Not verified",
+        ValidationStatus.InsufficientEvidence => "Insufficient evidence",
         _ => "Unknown"
     };
 
     private static (ValidationStatus, string?, IReadOnlyList<string>, DateTimeOffset?) Review(FeasibilityItem? r) => r switch
     {
         null => (ValidationStatus.Unknown, null, [], null),
-        { Status: FeasibilityStatus.Verified } => (ValidationStatus.Verified, $"Verified: {r.Evidence}", Links(r.Evidence).ToList(), r.ReviewedAtUtc ?? r.UpdatedAtUtc),
+        { Status: FeasibilityStatus.Verified } when Research.ResearchQuality.IsDocumented(r) =>
+            (ValidationStatus.Verified, $"Verified: {r.Evidence} (source {r.SourceUrl}, evidence dated {r.EvidenceDate:yyyy-MM-dd})",
+             Links(r.Evidence).Append(r.SourceUrl!).Distinct().ToList(), r.ReviewedAtUtc ?? r.UpdatedAtUtc),
+        { Status: FeasibilityStatus.Verified } =>
+            (ValidationStatus.InsufficientEvidence,
+             $"Insufficient evidence — recorded as Verified without {Research.ResearchQuality.MissingText(r)}: {r.Evidence ?? "no evidence text"}",
+             Links(r.Evidence).Concat(string.IsNullOrEmpty(r.SourceUrl) ? [] : [r.SourceUrl]).Distinct().ToList(), r.ReviewedAtUtc ?? r.UpdatedAtUtc),
+        { Status: FeasibilityStatus.Conflicting } =>
+            (ValidationStatus.Mismatch, $"Conflicting evidence: {r.Evidence}", Links(r.Evidence).ToList(), r.ReviewedAtUtc ?? r.UpdatedAtUtc),
         _ => (ValidationStatus.Mismatch, $"Discrepancy: {r.Evidence}", Links(r.Evidence).ToList(), r.ReviewedAtUtc ?? r.UpdatedAtUtc)
     };
 
@@ -182,7 +195,7 @@ public static partial class SiteValidation
     // 4 — Actual suitability for truck charging (summary of the reviewer's checks; details in "At a glance").
     private static ValidationSectionDto Suitability(IReadOnlyList<FeasibilityItem> reviewed, SiteSuitabilityDto suit)
     {
-        var concerns = reviewed.Where(r => r.Status == FeasibilityStatus.Concern).ToList();
+        var concerns = reviewed.Where(r => r.Status is FeasibilityStatus.Concern or FeasibilityStatus.Conflicting).ToList();
         var siteItems = suit.Items.Where(i => i.Key is not ("Identity" or "Contact")).ToList();
         var allVerifiedYes = siteItems.All(i => i.Basis == SuitabilityBasis.Verified && i.Answer == SuitabilityAnswer.Yes);
         var status = concerns.Count > 0 ? ValidationStatus.Mismatch

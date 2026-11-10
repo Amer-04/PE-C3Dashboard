@@ -23,7 +23,11 @@ public class SiteSuitabilityTests
     private static readonly Dictionary<FeasibilityItemKey, FeasibilityItem> NoReview = [];
 
     private static Dictionary<FeasibilityItemKey, FeasibilityItem> Review(params (FeasibilityItemKey Key, FeasibilityStatus Status, string? Evidence)[] r) =>
-        r.ToDictionary(x => x.Key, x => new FeasibilityItem { SiteId = "S1", ItemKey = x.Key, Status = x.Status, Evidence = x.Evidence });
+        r.ToDictionary(x => x.Key, x => new FeasibilityItem
+        {
+            SiteId = "S1", ItemKey = x.Key, Status = x.Status, Evidence = x.Evidence,
+            SourceUrl = "https://example.org/evidence", EvidenceDate = new DateOnly(2026, 10, 1), Reviewer = "Tester"
+        });
 
     private static SuitabilityItemDto Item(SiteSuitabilityDto d, string key) => d.Items.Single(i => i.Key == key);
 

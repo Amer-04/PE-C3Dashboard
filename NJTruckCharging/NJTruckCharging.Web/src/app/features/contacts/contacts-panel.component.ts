@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { RecordedByStore } from '../../core/recorded-by';
 import {
   CONTACT_TYPES, ContactType, ContactVerificationStatus, SiteContact, SiteContactState, SiteContactSummary,
 } from '../../core/models';
@@ -78,7 +79,7 @@ import {
             @if (c.email) { <dt>Email</dt><dd><a [href]="'mailto:' + c.email">{{ c.email }}</a></dd> }
             @if (c.sourceUrl) { <dt>Source</dt><dd><a [href]="c.sourceUrl" target="_blank" rel="noopener">evidence ↗</a></dd> }
             @if (!c.sourceUrl) { <dt>Source</dt><dd class="muted">none recorded</dd> }
-            @if (c.verificationStatus === 'Verified' && c.lastVerifiedUtc) { <dt>Verified</dt><dd>{{ c.lastVerifiedUtc | date: 'MMM d, y' }}@if (c.verifiedBy) { by {{ c.verifiedBy }} }</dd> }
+            @if (c.verificationStatus === 'Verified' && c.lastVerifiedUtc) { <dt>Verified</dt><dd>{{ c.lastVerifiedUtc | date: 'MMM d, y' }}@if (c.verifiedBy) { by {{ c.verifiedBy }} <i class="muted">(self-reported, not authenticated)</i> }</dd> }
             <dt>Last checked</dt><dd>{{ (c.lastVerifiedUtc ?? c.updatedAtUtc) | date: 'MMM d, y' }}</dd>
           </dl>
           @if (c.researchNotes) { <p class="small cc-notes">{{ c.researchNotes }}</p> }
@@ -104,6 +105,7 @@ import {
 })
 export class ContactsPanelComponent {
   private readonly api = inject(ApiService);
+  private readonly recordedBy = inject(RecordedByStore);
   protected readonly types = CONTACT_TYPES;
 
   readonly siteId = input.required<string>();
@@ -170,6 +172,7 @@ export class ContactsPanelComponent {
       contactType: this.contactType(), businessPhone: nn(this.businessPhone()),
       email: nn(this.email()), sourceUrl: nn(this.sourceUrl()),
       verificationStatus: this.verificationStatus(), researchNotes: nn(this.researchNotes()),
+      recordedBy: this.recordedBy.value(),
     };
     const id = this.editingId();
     const req$ = id
@@ -191,7 +194,7 @@ export class ContactsPanelComponent {
     this.api.updateContact(c.id, {
       name: c.name, organization: c.organization, jobTitle: c.jobTitle, contactType: c.contactType,
       businessPhone: c.businessPhone, email: c.email, sourceUrl: c.sourceUrl,
-      verificationStatus: 'Verified', researchNotes: c.researchNotes,
+      verificationStatus: 'Verified', researchNotes: c.researchNotes, recordedBy: this.recordedBy.value(),
     }).subscribe({ next: () => { this.load(this.siteId()); this.changed.emit(); }, error: e => this.error.set(describe(e)) });
   }
 

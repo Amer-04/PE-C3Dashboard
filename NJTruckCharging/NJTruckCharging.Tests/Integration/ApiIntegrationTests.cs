@@ -165,7 +165,7 @@ public partial class ApiIntegrationTests(TestWebAppFactory factory) : IClassFixt
 
         var put = await client.PutAsJsonAsync("/api/feasibility", new
         {
-            siteId, itemKey = "TruckEntranceAccess", status = "Verified", evidence = "Two 40ft curb cuts on the frontage road."
+            siteId, itemKey = "TruckEntranceAccess", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "Two 40ft curb cuts on the frontage road."
         });
         Assert.Equal(HttpStatusCode.OK, put.StatusCode);
         var dto = await put.Content.ReadFromJsonAsync<JsonElement>();
@@ -221,7 +221,7 @@ public partial class ApiIntegrationTests(TestWebAppFactory factory) : IClassFixt
         var noEvidence = await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "OutdoorStorageUse", status = "Verified" });
         Assert.Equal(HttpStatusCode.BadRequest, noEvidence.StatusCode);
 
-        var ok = await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "OutdoorStorageUse", status = "Verified", evidence = "Site visit: ~30 trailers stored on gravel yard" });
+        var ok = await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "OutdoorStorageUse", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "Site visit: ~30 trailers stored on gravel yard" });
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
 
         // Filter, list row, detail and CSV all agree.
@@ -350,7 +350,7 @@ public partial class ApiIntegrationTests(TestWebAppFactory factory) : IClassFixt
         Assert.Equal(0, before.GetProperty("totalCount").GetInt32());
 
         // Verify truck entrance for one site.
-        await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "TruckEntranceAccess", status = "Verified", evidence = "curb cuts" });
+        await client.PutAsJsonAsync("/api/feasibility", new { siteId, itemKey = "TruckEntranceAccess", status = "Verified", sourceUrl = "https://example.org/evidence", evidenceDate = "2026-10-01", recordedBy = "Tester", evidence = "curb cuts" });
 
         var after = await (await client.GetAsync("/api/sites?truckEntranceVerified=true&page=1&pageSize=50")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, after.GetProperty("totalCount").GetInt32());

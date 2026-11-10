@@ -20,4 +20,11 @@ public sealed record ImportResultDto(
     int BusyMultiTenantFlagsRecovered,
     double MaxScoreDifference,
     int RankMismatches,
-    TimeSpan Duration);
+    TimeSpan Duration,
+    /// <summary>Methodology version whose scores are live after the import.</summary>
+    int? MethodologyVersionId = null,
+    /// <summary>True when a custom (non-baseline) active methodology was re-applied to the new data.</summary>
+    bool CustomMethodologyReapplied = false);
+
+/// <summary>The workbook (or the active methodology) failed validation; nothing was imported.</summary>
+public sealed class ImportValidationException(string message) : Exception(message);

@@ -50,10 +50,13 @@ public sealed class SiteFilter
     public bool OnlyWithVerifiedContact { get; set; }
     /// <summary>Screening decisions to include: promising | research | unsuitable | notreviewed.</summary>
     public string[]? ScreeningDecisions { get; set; }
-    /// <summary>Site Evidence states to include: verified | preliminary | mismatch | unknown. See <see cref="ResearchReadiness"/>.</summary>
+    /// <summary>Site Evidence states to include: verified | insufficient | preliminary | mismatch | unknown. See <see cref="ResearchReadiness"/>.</summary>
     public string[]? EvidenceStates { get; set; }
     /// <summary>Contact Readiness states to include: relevant | general | lead | none. See <see cref="ResearchReadiness"/>.</summary>
     public string[]? ContactStates { get; set; }
+    /// <summary>Research completeness stages (research-set sites only): any | none | partial | complete.
+    /// See <see cref="Research.ResearchQuality"/>. Independent of the score.</summary>
+    public string[]? ResearchStages { get; set; }
 
     /// <summary>
     /// Applies the filter. Pass <paramref name="feasibility"/> and <paramref name="contacts"/> (the
@@ -64,7 +67,8 @@ public sealed class SiteFilter
         IQueryable<CandidateSite> q,
         IQueryable<FeasibilityItem>? feasibility = null,
         IQueryable<SiteContact>? contacts = null,
-        IQueryable<SiteScreening>? screenings = null)
+        IQueryable<SiteScreening>? screenings = null,
+        Research.ResearchSources? research = null)
     {
         if (Segments is { Length: > 0 }) q = q.Where(s => Segments.Contains(s.Segment));
         if (MinScore is { } min) q = q.Where(s => s.Score >= min);
@@ -93,12 +97,18 @@ public sealed class SiteFilter
         // Evaluation-state filters (require the related queryables).
         if (feasibility is not null)
         {
+            // "Verified" = a documented Verified verdict (evidence text, source URL, evidence date) — the same rule as
+            // Research.ResearchQuality.IsDocumented; undocumented verdicts are "Insufficient evidence", not verified.
+            const FeasibilityStatus ver = FeasibilityStatus.Verified;
             if (TruckEntranceVerified)
-                q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.TruckEntranceAccess && f.Status == FeasibilityStatus.Verified));
+                q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.TruckEntranceAccess && f.Status == ver
+                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != ""));
             if (ElectricalVerified)
-                q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.ElectricalService && f.Status == FeasibilityStatus.Verified));
+                q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.ElectricalService && f.Status == ver
+                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != ""));
             if (ParkingVerified)
-                q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.TruckParkingCapacity && f.Status == FeasibilityStatus.Verified));
+                q = q.Where(s => feasibility.Any(f => f.SiteId == s.SiteId && f.ItemKey == FeasibilityItemKey.TruckParkingCapacity && f.Status == ver
+                    && f.Evidence != null && f.Evidence != "" && f.SourceUrl != null && f.SourceUrl != "" && f.EvidenceDate != null && f.Reviewer != null && f.Reviewer != ""));
         }
         if (screenings is not null && ScreeningDecisions is { Length: > 0 })
             q = q.Where(ScreeningRules.InDecisions(ScreeningRules.ParseTokens(ScreeningDecisions), screenings));
@@ -107,6 +117,12 @@ public sealed class SiteFilter
             q = q.Where(ResearchReadiness.ReadinessIn([ContactReadiness.RelevantContactVerified], contacts));
         if (contacts is not null && ContactStates is { Length: > 0 })
             q = q.Where(ResearchReadiness.ReadinessIn(ResearchReadiness.ParseReadiness(ContactStates), contacts));
+        if (research is not null && ResearchStages is { Length: > 0 })
+        {
+            var (any, stages) = Research.ResearchQuality.ParseStages(ResearchStages);
+            if (any) q = q.Where(Research.ResearchQuality.InResearchSet(research));
+            else if (stages.Length > 0) q = q.Where(Research.ResearchQuality.StageIn(stages, research));
+        }
         if (feasibility is not null && screenings is not null && EvidenceStates is { Length: > 0 })
             q = q.Where(ResearchReadiness.EvidenceIn(ResearchReadiness.ParseEvidence(EvidenceStates), feasibility, screenings));
 
