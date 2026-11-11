@@ -186,7 +186,7 @@ export function startMockSupabaseAuth({ port, hook, siteUrl, tokenSeconds = 3600
         // An administrator-created account (bypasses the sign-up form, like "Add user" in the dashboard).
         const decision = await hook({ user: { email: body.email } });
         if (decision?.error && !body.bypassHook) return fail(403, 'hook_refused', decision.error.message);
-        const u = { id: randomUUID(), email: body.email, pw: hash(body.password), confirmedAt: new Date().toISOString(), bannedUntil: null, createdAt: new Date().toISOString() };
+        const u = { id: body.id ?? randomUUID(), email: body.email, pw: hash(body.password), confirmedAt: new Date().toISOString(), bannedUntil: null, createdAt: new Date().toISOString() };
         users.set(u.id, u);
         return send(200, { id: u.id });
       }

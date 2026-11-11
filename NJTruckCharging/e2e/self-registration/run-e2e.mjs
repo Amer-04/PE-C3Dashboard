@@ -36,6 +36,9 @@ const API = `http://127.0.0.1:${PORTS.api}`;
 const AUTH = `http://127.0.0.1:${PORTS.auth}`;
 const USER_CHECK_SECONDS = 5;
 const PASSWORD = 'Correct-Horse-Battery-42';
+// The one approved administrator exception (a personal Gmail account), as Auth__DomainExceptionUserIds.
+const ADMIN_ID = 'a11ce000-0000-4000-8000-00000000ad01';
+const ADMIN_EMAIL = 'c3.admin.personal@gmail.com';
 
 let failures = 0, passes = 0;
 const check = (ok, what) => { ok ? passes++ : failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}`); };
@@ -103,6 +106,7 @@ const api = spawn('dotnet', [join(apiBin, 'NJTruckCharging.dll')], {
     Auth__Supabase__PublishableKey: 'sb_publishable_e2e',
     Auth__Supabase__UserCheckSeconds: String(USER_CHECK_SECONDS),
     Auth__AccessRule: 'EmailDomain',
+    Auth__DomainExceptionUserIds: ADMIN_ID,
     ReadOnlyDemo__Enabled: 'true',
     Cors__Origins__0: SITE,
   },
@@ -292,6 +296,39 @@ try {
     await authPost('/__test/unconfirm', { email: 'e2e.unconfirm@poweredison.com' });
     await sleep((USER_CHECK_SECONDS + 1) * 1000);
     check(await apiGet('/api/sites?pageSize=1', t) === 401, 'same session after the address is unconfirmed: 401');
+  }
+
+  // F2. Administrator exception: an existing Gmail administrator (created before the hook) keeps access by user id;
+  //     every other personal account is still refused (scenario D); banning the administrator ends access.
+  {
+    await authPost('/__test/create-confirmed', { id: ADMIN_ID, email: ADMIN_EMAIL, password: PASSWORD, bypassHook: true });
+    const page = await newPage();
+    await page.goto(SITE + '/', { waitUntil: 'networkidle0' });
+    await signIn(page, ADMIN_EMAIL);
+    await waitText(page, 'Sign out');
+    await sleep(2500);
+    const calls = page.apiCalls;
+    check(calls.length > 0 && calls.every(c => c.startsWith('2')), `administrator exception (${ADMIN_EMAIL}): dashboard loads (${calls.length} API calls)`);
+    const token = await storedToken(page);
+    check(await apiGet('/api/sites/export', token) === 200, 'administrator exception: CSV export works');
+    const write = await fetch(API + '/api/saved-sites', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' });
+    check(write.status === 403 && (await write.json()).code === 'read_only', 'administrator exception: still read-only');
+    const gmailSignup = await authPost('/auth/v1/signup', { email: 'c3.admin.personal2@gmail.com', password: PASSWORD });
+    check(gmailSignup.status === 403, 'the hook still refuses new Gmail sign-ups (the exception is only on the API, by user id)');
+    const other = (await authPost('/auth/v1/token?grant_type=password', { email: 'old.personal@gmail.com', password: PASSWORD })).body.access_token;
+    check(await apiGet('/api/sites?pageSize=1', other) === 403, 'another confirmed Gmail account is still refused (403)');
+
+    await authPost('/__test/ban', { email: ADMIN_EMAIL });
+    const t0 = Date.now();
+    let status = 200;
+    while (status === 200 && Date.now() - t0 < (USER_CHECK_SECONDS + 3) * 1000) { await sleep(500); status = await apiGet('/api/sites?pageSize=1', token); }
+    check(status === 401, `banned administrator: token refused after ${((Date.now() - t0) / 1000).toFixed(1)}s (limit ${USER_CHECK_SECONDS}s cache)`);
+    await page.reload({ waitUntil: 'networkidle0' });
+    await waitText(page, 'session has ended');
+    await signIn(page, ADMIN_EMAIL);
+    await waitText(page, 'disabled');
+    check(true, 'banned administrator: dashboard returns to sign-in and signing in again is refused');
+    await page.browserContext().close();
   }
 
   // G. Revocation: an employee leaves; the administrator deletes or bans the account while they are signed in.

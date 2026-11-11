@@ -75,28 +75,40 @@ try {
   await db.query(`CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, created_at timestamptz DEFAULT now(),
     last_sign_in_at timestamptz, email_confirmed_at timestamptz, banned_until timestamptz, is_anonymous boolean DEFAULT false,
     raw_app_meta_data jsonb DEFAULT '{"provider":"email"}')`);
-  const ids = { a: '11111111-1111-1111-1111-111111111111', b: '22222222-2222-2222-2222-222222222222',
-                c: '33333333-3333-3333-3333-333333333333', d: '44444444-4444-4444-4444-444444444444', e: '55555555-5555-5555-5555-555555555555' };
+  const id = (d) => { const n = String(d); return `${n.repeat(8)}-${n.repeat(4)}-${n.repeat(4)}-${n.repeat(4)}-${n.repeat(12)}`; };
   await db.query(`INSERT INTO auth.users (id, email, email_confirmed_at, banned_until) VALUES
-    ('${ids.a}', 'listed@poweredison.com', now(), NULL),
-    ('${ids.b}', 'listed.personal@gmail.com', now(), NULL),
-    ('${ids.c}', 'unlisted@ev-edison.com', now(), NULL),
-    ('${ids.d}', 'unlisted@mail.poweredison.com', now(), NULL),
-    ('${ids.e}', 'listed.banned@poweredison.com', now(), now() + interval '10 years')`);
-  const filled = inventorySql.replaceAll("'PASTE_AUTH__ALLOWEDUSERIDS_HERE', 'PASTE_AUTH__ALLOWEDUSERIDS_HERE'",
-    `'${ids.a}, ${ids.b},${ids.e},99999999-9999-9999-9999-999999999999', 'PASTE_AUTH__ALLOWEDUSERIDS_HERE'`);
-  const res = await db.query(filled);
-  const [inv, stale] = res;
-  const verdict = Object.fromEntries(inv.rows.map(r => [r.email, r.after_switch]));
-  check(verdict['listed@poweredison.com'] === 'keeps access', 'inventory: listed company account keeps access');
-  check(verdict['listed.personal@gmail.com'] === 'LOSES ACCESS', 'inventory: listed personal account LOSES ACCESS');
-  check(verdict['listed.banned@poweredison.com'] === 'LOSES ACCESS', 'inventory: listed banned account LOSES ACCESS');
-  check(verdict['unlisted@ev-edison.com'] === 'GAINS ACCESS', 'inventory: unlisted confirmed company account GAINS ACCESS');
-  check(verdict['unlisted@mail.poweredison.com'] === 'still refused', 'inventory: subdomain account still refused');
-  check(stale.rows.length === 1 && stale.rows[0].allowlisted_id_without_account === '99999999-9999-9999-9999-999999999999',
-    'inventory: stale allowlist id reported');
-  const unfilled = await db.query(inventorySql);
-  check(unfilled[0].rows.every(r => !r.approved_today), 'inventory with the placeholder left in treats nobody as approved');
+    ('${id(1)}', 'listed@poweredison.com', now(), NULL),
+    ('${id(2)}', 'listed.personal@gmail.com', now(), NULL),
+    ('${id(3)}', 'unlisted@ev-edison.com', now(), NULL),
+    ('${id(4)}', 'unlisted@mail.poweredison.com', now(), NULL),
+    ('${id(5)}', 'listed.banned@poweredison.com', now(), now() + interval '10 years'),
+    ('${id(6)}', 'admin.listed.exception@gmail.com', now(), NULL),
+    ('${id(7)}', 'admin.exception.only@gmail.com', now(), NULL),
+    ('${id(8)}', 'listed.unconfirmed@ev-edison.com', NULL, NULL)`);
+  // Exactly what an administrator does: paste the two Render values, once each, between the quotes.
+  const fill = (allowed, exceptions) => inventorySql
+    .replace("'' ::text AS allowed_ids", `'${allowed}' ::text AS allowed_ids`)
+    .replace("'' ::text AS exception_ids", `'${exceptions}' ::text AS exception_ids`);
+  const filled = fill(`${id(1)}, ${id(2)}\n${id(5)};${id(6)} ${id(8)},99999999-9999-9999-9999-999999999999`, `${id(6)}, ${id(7)}`);
+  check(filled !== inventorySql, 'inventory: both paste points found');
+  const inv = (await db.query(filled)).rows;
+  const verdict = Object.fromEntries(inv.map(r => [r.email, r.verdict]));
+  const expect = {
+    'listed@poweredison.com': 'keeps access (step 1 and 3)',
+    'listed.personal@gmail.com': 'LOSES ACCESS at step 1 (personal address, not an exception)',
+    'listed.banned@poweredison.com': 'NO ACCESS (unconfirmed, banned or anonymous)',
+    'listed.unconfirmed@ev-edison.com': 'NO ACCESS (unconfirmed, banned or anonymous)',
+    'unlisted@ev-edison.com': 'GAINS ACCESS at step 3 (company address)',
+    'unlisted@mail.poweredison.com': 'no access (before and after)',
+    'admin.listed.exception@gmail.com': 'keeps access (step 1 and 3)',
+    'admin.exception.only@gmail.com': 'exception NOT on allowlist: no access at step 1, access at step 3',
+    '(no account)': 'STALE ID: no such account, remove it from Render',
+  };
+  for (const [email, v] of Object.entries(expect)) check(verdict[email] === v, `inventory: ${email} -> ${v} (got ${verdict[email]})`);
+  check(inv[0].ids_on_allowlist === '6' && inv[0].ids_as_exception === '2', 'inventory: id counts shown (6 allowlisted, 2 exceptions)');
+  const unfilled = (await db.query(inventorySql)).rows;
+  check(unfilled.every(r => !r.on_allowlist && !r.exception) && unfilled[0].ids_on_allowlist === '0',
+    'inventory with nothing pasted treats nobody as approved and shows 0 ids');
 } finally {
   await db.end().catch(() => {});
   await server.stop();

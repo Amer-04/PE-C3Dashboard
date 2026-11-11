@@ -128,6 +128,7 @@ dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runti
 | `Auth__AllowedUserIds` | approved User UIDs, comma-separated |
 | `Auth__Supabase__PublishableKey` | the project's **publishable** key (same as Netlify). Required by the API since self-registration support: it asks Supabase whether each account is still active and confirmed |
 | `Auth__AccessRule` | leave **unset** until the rollout in `EMPLOYEE_SELF_REGISTRATION.md` reaches phase 2 |
+| `Auth__DomainExceptionUserIds` | from phase 2: user ids of administrators without a company address (at most 3); leave **unset** before |
 | `Cors__Origins__0` | `https://<site>.netlify.app` |
 | `GoogleMaps__ApiKey` | leave empty (OpenStreetMap; avoids Google charges) |
 

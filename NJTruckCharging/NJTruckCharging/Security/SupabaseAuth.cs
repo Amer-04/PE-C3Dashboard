@@ -19,7 +19,9 @@ namespace NJTruckCharging.Security;
 /// (503 if Supabase cannot be reached; never access).</item>
 /// <item><b>Access rule</b> (<c>Auth:AccessRule</c>, see <see cref="AccessRule"/>): the confirmed e-mail domain is exactly a
 /// company domain (<see cref="EmployeeEmailPolicy"/>) and/or the user id is on <c>Auth:AllowedUserIds</c>; never in
-/// <c>Auth:BlockedUserIds</c>, else 403 <c>not_approved</c> with a generic message.</item>
+/// <c>Auth:BlockedUserIds</c>, else 403 <c>not_approved</c> with a generic message. A few administrator accounts without a
+/// company address may be named in <c>Auth:DomainExceptionUserIds</c>: for them only the domain test is waived, never
+/// gates 1-2, the blocklist or read-only mode.</item>
 /// </list>
 /// Signing keys come from the project's JWKS endpoint (asymmetric keys, the Supabase default); a project still on
 /// the legacy shared secret can set <c>Auth:Supabase:JwtSecret</c> instead (server-side only).
@@ -48,6 +50,15 @@ public static class SupabaseAuth
 
     /// <summary>User ids refused whatever else is true (immediate revocation without waiting for Supabase).</summary>
     public static HashSet<Guid> BlockedUserIds(IConfiguration config) => UserIds(config, "Auth:BlockedUserIds");
+
+    /// <summary>
+    /// Explicitly approved administrator accounts that may use the API without a company e-mail address (e.g. the project
+    /// administrator's personal address). Only the domain test is waived: the token, a confirmed e-mail, an active
+    /// unbanned account, the blocklist and read-only mode still apply. Kept short on purpose.
+    /// </summary>
+    public static HashSet<Guid> DomainExceptionUserIds(IConfiguration config) => UserIds(config, "Auth:DomainExceptionUserIds");
+
+    public const int MaxDomainExceptions = 3;
 
     private static HashSet<Guid> UserIds(IConfiguration config, string key)
     {
@@ -79,7 +90,16 @@ public static class SupabaseAuth
     {
         var rule = Rule(config);
         var allowed = AllowedUserIds(config);
-        BlockedUserIds(config);                                            // throws on a malformed id
+        var blocked = BlockedUserIds(config);                              // throws on a malformed id
+        var exceptions = DomainExceptionUserIds(config);
+        if (exceptions.Count > 0 && rule == AccessRule.UserIds)
+            throw new InvalidOperationException("Auth:DomainExceptionUserIds has no meaning with Auth:AccessRule=UserIds (there is no " +
+                "domain test to waive). Remove it, or use EmailDomainAndUserIds / EmailDomain.");
+        if (exceptions.Count > MaxDomainExceptions)
+            throw new InvalidOperationException($"Auth:DomainExceptionUserIds lists {exceptions.Count} accounts; at most {MaxDomainExceptions} " +
+                "administrator exceptions are allowed. Employees should use their company address.");
+        if (exceptions.Overlaps(blocked))
+            throw new InvalidOperationException("A user id is in both Auth:DomainExceptionUserIds and Auth:BlockedUserIds. Remove it from one.");
         if (rule != AccessRule.EmailDomain && allowed.Count == 0)
             throw new InvalidOperationException($"Auth:AccessRule={rule} needs Auth:AllowedUserIds: nobody could sign in. Add the approved Supabase user ids.");
         if (rule == AccessRule.EmailDomain && allowed.Count > 0)
@@ -284,6 +304,7 @@ public sealed class EmployeeAccessHandler(IConfiguration config) : Authorization
     private readonly AccessRule _rule = SupabaseAuth.Rule(config);
     private readonly HashSet<Guid> _allowed = SupabaseAuth.AllowedUserIds(config);
     private readonly HashSet<Guid> _blocked = SupabaseAuth.BlockedUserIds(config);
+    private readonly HashSet<Guid> _domainExceptions = SupabaseAuth.DomainExceptionUserIds(config);
 
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, EmployeeAccessRequirement requirement)
     {
@@ -306,13 +327,15 @@ public sealed class EmployeeAccessHandler(IConfiguration config) : Authorization
         var email = verified[0].Value;
 
         var onList = _allowed.Contains(id);
-        var companyEmail = EmployeeEmailPolicy.IsAllowed(email)
-            && string.Equals(user.FindFirstValue("email"), email, StringComparison.OrdinalIgnoreCase);
+        var emailMatches = string.Equals(user.FindFirstValue("email"), email, StringComparison.OrdinalIgnoreCase);
+        // The domain test: a confirmed company address, or (only) an explicitly approved administrator exception.
+        // Either way the token's e-mail must be the one Supabase confirmed.
+        var domainOk = emailMatches && (EmployeeEmailPolicy.IsAllowed(email) || _domainExceptions.Contains(id));
         return _rule switch
         {
             AccessRule.UserIds => onList,
-            AccessRule.EmailDomainAndUserIds => onList && companyEmail,
-            AccessRule.EmailDomain => companyEmail,
+            AccessRule.EmailDomainAndUserIds => onList && domainOk,
+            AccessRule.EmailDomain => domainOk,
             _ => false,
         };
     }
