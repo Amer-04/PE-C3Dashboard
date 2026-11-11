@@ -79,7 +79,8 @@ Demo path (verified end-to-end by `demo-walkthrough.mjs`):
 ## 5. Before the first push
 
 1. **Rotate the Google Maps key** that was committed to `appsettings.Development.json` in commits `d43ebdb`
-   through `65622a5` (local branch `feature/saved-sites-pipeline` only; never pushed). In Google Cloud → APIs &
+   through `65622a5`. **Correction (2026-11-11):** `d43ebdb` is in the history of `origin/main`
+   (shahadkhraisheh96/NJTruckCharging), so treat the key as exposed; it is not in `Amer-04/PE-C3Dashboard`. In Google Cloud → APIs &
    Services → Credentials, create a replacement key restricted to *Websites* (`http://localhost:4200/*` plus the
    production URL) and to *Maps JavaScript API* only. Then run
    `dotnet user-secrets set "GoogleMaps:ApiKey" "<new key>"` and delete the old key in Google Cloud.

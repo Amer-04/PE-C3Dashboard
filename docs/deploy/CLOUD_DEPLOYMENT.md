@@ -130,9 +130,30 @@ dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runti
 | `Auth__AccessRule` | leave **unset** until the rollout in `EMPLOYEE_SELF_REGISTRATION.md` reaches phase 2 |
 | `Auth__DomainExceptionUserIds` | from phase 2: user ids of administrators without a company address (at most 3); leave **unset** before |
 | `Cors__Origins__0` | `https://<site>.netlify.app` |
-| `GoogleMaps__ApiKey` | leave empty (OpenStreetMap; avoids Google charges) |
+| `GoogleMaps__ApiKey` | optional: a restricted **browser** key (see "Google Maps" below). Empty = OpenStreetMap basemap and **no satellite view** |
+| `GoogleMaps__MapId` | optional; unset uses `DEMO_MAP_ID` |
 
 3. **Manual Deploy**. `https://<service>.onrender.com/healthz` → `ok`. Free services sleep after 15 idle minutes.
+
+### Google Maps (dashboard map and site satellite view)
+
+The browser loads Google Maps itself. It gets the key at run time from `GET /api/config/maps` (sign-in required),
+which returns Render's `GoogleMaps__ApiKey`. **Netlify needs no Google variable**, and the API never calls Google, so
+there is no separate server key. Without a key the dashboard map uses OpenStreetMap and the site page shows
+"Satellite imagery unavailable in-app (no Google Maps key is configured for this deployment)".
+
+1. Google Cloud → APIs & Services → Library: enable **Maps JavaScript API** (billing must be on; it has a monthly
+   free allowance). Optional: under Quotas, cap daily map loads to avoid surprises.
+2. Credentials → **Create credentials → API key**, then restrict it:
+   * Application restrictions: **Websites** → `https://c3dashboard.netlify.app/*` (add a Netlify deploy-preview
+     address only if you need maps there; never `*`).
+   * API restrictions: **Restrict key** → **Maps JavaScript API** only.
+3. Render → Environment: `GoogleMaps__ApiKey` = the new key → Save (Render restarts the API).
+4. Check: sign in, open a site → the satellite view shows. If it says "Google Maps did not accept this site's key",
+   the referrer, API restriction or billing is wrong (the browser console names the exact Google error).
+
+Use a different key for local development (`http://localhost:4200/*`) so either can be rotated alone. Never put a
+key in Netlify variables, `app-config.json`, `appsettings*.json` or the docs.
 
 ## 6. Netlify (website)
 
@@ -156,4 +177,5 @@ dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runti
 ## Expected charges
 
 $0: Supabase Free (one free project; ~65 MB of the 500 MB database; free projects pause after about a week without
-activity — restore in one click), Render Free, Netlify Free, OpenStreetMap, no Google key, no Supabase add-ons.
+activity — restore in one click), Render Free, Netlify Free, OpenStreetMap, no Supabase add-ons. With a Google
+Maps key, map loads beyond Google's monthly free allowance are billed to the Google Cloud project.

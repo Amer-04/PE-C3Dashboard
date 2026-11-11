@@ -1,5 +1,5 @@
 import {
-  ChangeDetectionStrategy, Component, ElementRef, OnDestroy, afterNextRender, effect, inject, signal, viewChild,
+  ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnDestroy, afterNextRender, effect, inject, signal, viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { Deck, FlyToInterpolator, Layer, MapViewState, PickingInfo } from '@deck.gl/core';
@@ -8,7 +8,7 @@ import { BitmapLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { TileLayer } from '@deck.gl/geo-layers';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
-import { loadGoogleMaps } from '../../core/maps-loader';
+import { MAPS_LOADER } from '../../core/maps-loader';
 import { PowerEdisonSite, SiteMapPoint } from '../../core/models';
 import { SiteStore } from '../../core/site-store';
 import { FLOOD_RGB, PE_RGB, RAMP_CSS, SCORE_MAX, SCORE_MIN, scoreRgb } from '../../shared/score-color';
@@ -47,8 +47,12 @@ interface Hover { x: number; y: number; point?: SiteMapPoint; pe?: PowerEdisonSi
 
       @if (mode() === 'fallback') {
         <div class="map-notice">
-          No Google Maps API key configured — showing an open basemap.
-          Add <code>GoogleMaps:ApiKey</code> to the API settings (see README).
+          @if (keyRejected()) {
+            Google Maps did not accept this site's key — showing an open basemap.
+          } @else {
+            No Google Maps API key configured — showing an open basemap.
+            Add <code>GoogleMaps:ApiKey</code> to the API settings (see README).
+          }
           <span class="attrib">© OpenStreetMap contributors</span>
         </div>
       }
@@ -77,9 +81,11 @@ interface Hover { x: number; y: number; point?: SiteMapPoint; pe?: PowerEdisonSi
 export class SiteMapComponent implements OnDestroy {
   protected readonly store = inject(SiteStore);
   private readonly api = inject(ApiService);
+  private readonly maps = inject(MAPS_LOADER);
   private readonly mapEl = viewChild.required<ElementRef<HTMLDivElement>>('mapEl');
 
   protected readonly mode = signal<'loading' | 'google' | 'fallback'>('loading');
+  protected readonly keyRejected = signal(false);
   protected readonly mapType = signal<'roadmap' | 'hybrid'>('roadmap');
   protected readonly hover = signal<Hover | null>(null);
   protected readonly ramp = RAMP_CSS;
@@ -92,6 +98,7 @@ export class SiteMapComponent implements OnDestroy {
 
   constructor() {
     afterNextRender(() => void this.init());
+    inject(DestroyRef).onDestroy(this.maps.onAuthFailure(() => this.keyWasRejected()));
 
     // Re-render layers whenever data or selection changes.
     effect(() => {
@@ -129,7 +136,8 @@ export class SiteMapComponent implements OnDestroy {
 
     if (key) {
       try {
-        const { Map } = await loadGoogleMaps(key);
+        const { Map } = await this.maps.load(key);
+        if (this.keyRejected()) throw new Error('Google Maps did not accept the key.');
         this.map = new Map(this.mapEl().nativeElement, {
           center: NJ_CENTER, zoom: 8, mapId,
           mapTypeControl: false, streetViewControl: true, fullscreenControl: true,
@@ -144,6 +152,23 @@ export class SiteMapComponent implements OnDestroy {
       }
     }
 
+    this.startFallback();
+  }
+
+  /** Google rejected the key after loading: drop the (grey) Google map and show the open basemap instead. */
+  private keyWasRejected() {
+    if (this.keyRejected()) return;
+    this.keyRejected.set(true);
+    if (this.mode() !== 'google') return; // still loading: init() falls back
+    this.overlay?.finalize();
+    this.overlay = undefined;
+    this.map = undefined;
+    this.mapEl().nativeElement.replaceChildren();
+    this.startFallback();
+  }
+
+  private startFallback() {
+    if (this.deck) return;
     this.deck = new Deck({
       parent: this.mapEl().nativeElement,
       initialViewState: this.homeView(),

@@ -507,7 +507,7 @@ table.compare td[data-tone="concern"], table.compare td[data-tone="flag"] { colo
 .scr-nav { display: flex; gap: 6px; flex: none; }
 .sat-wrap { position: relative; height: min(68vh, 640px); min-height: 360px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
 .sat-map { position: absolute; inset: 0; }
-.sat-fallback { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 20px; }
+.sat-fallback { position: absolute; inset: 0; background: var(--surface-2); display: grid; place-content: center; text-align: center; padding: 20px; }
 .sat-zoom { position: absolute; left: 10px; top: 10px; display: flex; gap: 4px; }
 .sat-zoom .btn-ghost { background: var(--surface); box-shadow: var(--shadow); }
 .scr-facts { min-width: 0; }

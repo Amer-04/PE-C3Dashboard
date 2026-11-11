@@ -60,7 +60,8 @@ Maps, including the satellite view that is useful for checking open land, add a 
 2. Open **APIs & Services → Library** and enable **Maps JavaScript API**.
 3. Open **APIs & Services → Credentials** and choose **Create credentials → API key**.
 4. Restrict the key:
-   - **Application restrictions:** *Websites*. Add `http://localhost:4200/*` and your production URL.
+   - **Application restrictions:** *Websites*. Add `http://localhost:4200/*` (development key) or the dashboard
+     address, e.g. `https://c3dashboard.netlify.app/*` (production key).
    - **API restrictions:** *Maps JavaScript API* only.
 5. Optional: create a **Map ID** under **Google Maps Platform → Map management** (JavaScript, Vector)
    for custom styling. Otherwise `DEMO_MAP_ID` is used.
