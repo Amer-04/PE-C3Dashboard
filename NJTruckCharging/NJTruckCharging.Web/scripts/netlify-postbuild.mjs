@@ -4,6 +4,8 @@
 //   C3_API_BASE_URL           https://<render-service>.onrender.com           (required)
 //   SUPABASE_URL              https://<project-ref>.supabase.co                (required)
 //   SUPABASE_PUBLISHABLE_KEY  the project's publishable / anon key            (required; public by design)
+//   C3_SELF_REGISTRATION      "true" shows "Create account" (only after sign-ups, custom SMTP and the Before User
+//                             Created hook are set up in Supabase); anything else hides it      (optional, default off)
 //
 // Only public values may reach the browser. The build FAILS if the key looks like a secret / service-role key or if
 // a URL is not https, so a privileged credential can never be published by mistake.
@@ -18,6 +20,7 @@ const env = (name) => (process.env[name] ?? '').trim();
 const apiBaseUrl = env('C3_API_BASE_URL').replace(/\/+$/, '');
 const supabaseUrl = env('SUPABASE_URL').replace(/\/+$/, '');
 const key = env('SUPABASE_PUBLISHABLE_KEY');
+const selfRegistration = env('C3_SELF_REGISTRATION') === 'true';
 
 for (const [name, value] of [['C3_API_BASE_URL', apiBaseUrl], ['SUPABASE_URL', supabaseUrl]]) {
   if (!value) fail(`${name} is not set.`);
@@ -36,7 +39,7 @@ if (key.split('.').length === 3) {
 if (!existsSync(join(out, 'index.html'))) fail(`no build output at ${out}`);
 
 writeFileSync(join(out, 'app-config.json'),
-  JSON.stringify({ apiBaseUrl, supabaseUrl, supabasePublishableKey: key, readOnly: true }, null, 2) + '\n');
+  JSON.stringify({ apiBaseUrl, supabaseUrl, supabasePublishableKey: key, readOnly: true, selfRegistration }, null, 2) + '\n');
 
 // Strict Content-Security-Policy: inline scripts in index.html are allowed only by their exact hash.
 const html = readFileSync(join(out, 'index.html'), 'utf8');
@@ -76,4 +79,4 @@ writeFileSync(join(out, '_headers'), `/*
   Cache-Control: no-cache
 `);
 
-console.log(`netlify-postbuild: wrote app-config.json and _headers (API ${apiBaseUrl}, Supabase ${supabaseUrl}, ${hashes.length} inline script hash(es)).`);
+console.log(`netlify-postbuild: wrote app-config.json and _headers (API ${apiBaseUrl}, Supabase ${supabaseUrl}, self-registration ${selfRegistration ? 'ON' : 'off'}, ${hashes.length} inline script hash(es)).`);

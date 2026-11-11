@@ -69,6 +69,10 @@ is sent). Copy each **User UID** into `Auth__AllowedUserIds` on Render. The webs
 only; it has no sign-up, no e-mailed codes and ignores sign-in links. **Revoke:** remove the UID (effective after Render
 restarts) and delete or ban the user.
 
+**Self-registration with company e-mail addresses** (replaces the allowlist step by step) is described in
+[`EMPLOYEE_SELF_REGISTRATION.md`](EMPLOYEE_SELF_REGISTRATION.md): rollout phases, Supabase settings, custom SMTP,
+password recovery and off-boarding. Until its phase 3, the settings above stay as they are.
+
 ## 3. Copy source (local, read-only for the live database)
 
 Never copy from or migrate the live `NJTruckCharging` database. Prepared and verified on 2026-11-10:
@@ -122,6 +126,8 @@ dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runti
 | `ConnectionStrings__DefaultConnection` | `Host=<pooler-host>;Port=5432;Database=postgres;Username=c3_runtime_readonly.olxmmztusojqfyvnzusx;Password=<C3_READONLY_PASSWORD>;SSL Mode=Require;Maximum Pool Size=5` |
 | `Auth__Supabase__Url` | `https://olxmmztusojqfyvnzusx.supabase.co` |
 | `Auth__AllowedUserIds` | approved User UIDs, comma-separated |
+| `Auth__Supabase__PublishableKey` | the project's **publishable** key (same as Netlify). Required by the API since self-registration support: it asks Supabase whether each account is still active and confirmed |
+| `Auth__AccessRule` | leave **unset** until the rollout in `EMPLOYEE_SELF_REGISTRATION.md` reaches phase 2 |
 | `Cors__Origins__0` | `https://<site>.netlify.app` |
 | `GoogleMaps__ApiKey` | leave empty (OpenStreetMap; avoids Google charges) |
 

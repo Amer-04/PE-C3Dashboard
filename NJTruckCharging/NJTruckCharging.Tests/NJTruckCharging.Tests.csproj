@@ -20,6 +20,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- One set of e-mail domain test vectors shared by the API, Angular and Supabase-hook tests. -->
+    <None Include="..\NJTruckCharging.Web\src\app\core\employee-email.vectors.json" Link="employee-email.vectors.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\NJTruckCharging.Domain\NJTruckCharging.Domain.csproj" />
     <ProjectReference Include="..\NJTruckCharging.Application\NJTruckCharging.Application.csproj" />
     <ProjectReference Include="..\NJTruckCharging.Infrastructure\NJTruckCharging.Infrastructure.csproj" />

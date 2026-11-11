@@ -17,8 +17,8 @@ if (DatabaseProvider.IsPostgres(builder.Configuration))
 {
     if (!authEnabled) throw new InvalidOperationException("The cloud (PostgreSQL) deployment requires Auth:Mode=Supabase.");
     if (!readOnlyDemo) throw new InvalidOperationException("The cloud (PostgreSQL) deployment requires ReadOnlyDemo:Enabled=true.");
-    if (SupabaseAuth.AllowedUserIds(builder.Configuration).Count == 0)
-        throw new InvalidOperationException("Auth:AllowedUserIds is empty: nobody could sign in. Add the approved Supabase user ids.");
+    // Access rule, allowlist/blocklist and the publishable key must form a working, non-empty configuration.
+    SupabaseAuth.ValidateAccessConfiguration(builder.Configuration);
 }
 if (authEnabled) builder.Services.AddSupabaseAuth(builder.Configuration);
 
