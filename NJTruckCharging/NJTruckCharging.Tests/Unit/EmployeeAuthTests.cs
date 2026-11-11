@@ -190,10 +190,11 @@ public class EmployeeAccessHandlerTests
 {
     private static readonly Guid Id = Guid.Parse("6f1d3c52-7a0e-4b8e-9d2a-1c5b8e7f9a01");
 
-    private static EmployeeAccessHandler Handler(string rule, string allowed = "", string blocked = "") =>
+    private static EmployeeAccessHandler Handler(string rule, string allowed = "", string blocked = "", string exceptions = "") =>
         new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Auth:AccessRule"] = rule, ["Auth:AllowedUserIds"] = allowed, ["Auth:BlockedUserIds"] = blocked,
+            ["Auth:DomainExceptionUserIds"] = exceptions,
         }).Build());
 
     private static ClaimsPrincipal User(string tokenEmail, params Claim[] serverClaims)
@@ -258,5 +259,71 @@ public class EmployeeAccessHandlerTests
         Assert.True(Handler("EmailDomainAndUserIds", allowed: Id.ToString()).IsAllowed(company));
         Assert.False(Handler("EmailDomainAndUserIds", allowed: Guid.NewGuid().ToString()).IsAllowed(company));
         Assert.False(Handler("EmailDomain").IsAllowed(personal));
+    }
+
+    // ---- Administrator exceptions (Auth:DomainExceptionUserIds) ----
+
+    [Fact]
+    public void An_approved_administrator_exception_may_use_a_personal_address()
+    {
+        var admin = User("admin.person@gmail.com", Verified("admin.person@gmail.com"));
+        Assert.True(Handler("EmailDomain", exceptions: Id.ToString()).IsAllowed(admin));
+        Assert.False(Handler("EmailDomain").IsAllowed(admin));                                        // not without the exception
+        Assert.False(Handler("EmailDomain", exceptions: Guid.NewGuid().ToString()).IsAllowed(admin)); // another id's exception
+    }
+
+    [Fact]
+    public void An_exception_waives_only_the_domain_test()
+    {
+        var h = Handler("EmailDomain", exceptions: Id.ToString());
+        Assert.False(h.IsAllowed(User("admin.person@gmail.com")));                                    // no server account check
+        Assert.False(h.IsAllowed(User("admin.person@gmail.com", Verified("admin.person@gmail.com", issuer: "forged"))));
+        Assert.False(h.IsAllowed(User("other@gmail.com", Verified("admin.person@gmail.com"))));      // token e-mail must match
+        var anon = new ClaimsPrincipal(new ClaimsIdentity([new("sub", Id.ToString()), new("role", "authenticated"),
+            new("email", "admin.person@gmail.com"), new("is_anonymous", "true")], "Bearer"));
+        anon.AddIdentity(new ClaimsIdentity([Verified("admin.person@gmail.com")], SupabaseAuth.CheckedClaimsIssuer));
+        Assert.False(h.IsAllowed(anon));
+    }
+
+    [Fact]
+    public void In_the_transition_rule_an_exception_must_also_be_on_the_allowlist()
+    {
+        var admin = User("admin.person@gmail.com", Verified("admin.person@gmail.com"));
+        Assert.True(Handler("EmailDomainAndUserIds", allowed: Id.ToString(), exceptions: Id.ToString()).IsAllowed(admin));
+        Assert.False(Handler("EmailDomainAndUserIds", allowed: Id.ToString()).IsAllowed(admin));     // today's step-1 loss
+        Assert.False(Handler("EmailDomainAndUserIds", allowed: Guid.NewGuid().ToString(), exceptions: Id.ToString()).IsAllowed(admin));
+    }
+
+    [Theory]
+    [InlineData("UserIds", "6f1d3c52-7a0e-4b8e-9d2a-1c5b8e7f9a01", "", "no domain test to waive")]
+    [InlineData("EmailDomain", "", "6f1d3c52-7a0e-4b8e-9d2a-1c5b8e7f9a01", "in both lists")]
+    [InlineData("EmailDomain", "", "", "too many")]
+    [InlineData("EmailDomain", "", "", "malformed")]
+    public void Unsafe_exception_configurations_stop_startup(string rule, string allowed, string blocked, string why)
+    {
+        var exceptions = why switch
+        {
+            "too many" => string.Join(",", Enumerable.Range(0, SupabaseAuth.MaxDomainExceptions + 1).Select(_ => Guid.NewGuid())),
+            "malformed" => "admin@gmail.com",
+            _ => Id.ToString(),
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Auth:AccessRule"] = rule, ["Auth:AllowedUserIds"] = allowed, ["Auth:BlockedUserIds"] = blocked,
+            ["Auth:DomainExceptionUserIds"] = exceptions, ["Auth:Supabase:PublishableKey"] = "sb_publishable_x",
+        }).Build();
+        Assert.IsType<InvalidOperationException>(Record.Exception(() => SupabaseAuth.ValidateAccessConfiguration(config)));
+    }
+
+    [Fact]
+    public void A_valid_exception_configuration_starts()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Auth:AccessRule"] = "EmailDomain", ["Auth:DomainExceptionUserIds"] = Id.ToString(),
+            ["Auth:Supabase:PublishableKey"] = "sb_publishable_x",
+        }).Build();
+        SupabaseAuth.ValidateAccessConfiguration(config);
+        Assert.Equal([Id], SupabaseAuth.DomainExceptionUserIds(config));
     }
 }
