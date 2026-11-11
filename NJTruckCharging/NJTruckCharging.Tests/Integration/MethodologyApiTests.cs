@@ -72,7 +72,7 @@ public class MethodologyApiTests(MethodologyWebAppFactory f) : IClassFixture<Met
         fromDashboard.Headers.Add("Origin", "http://localhost:4200");
         var ok = await Admin.SendAsync(fromDashboard);
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await Admin.DeleteAsync($"/api/methodology/drafts/{(await Json(ok)).GetProperty("version").GetProperty("id").GetInt32()}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Admin.DeleteAsync($"/api/methodology/drafts/{(await Json(ok)).GetProperty("version").GetProperty("id").GetInt32()}?revision=1")).StatusCode);
     }
 
     [Fact]
@@ -103,9 +103,9 @@ public class MethodologyApiTests(MethodologyWebAppFactory f) : IClassFixture<Met
         Assert.Equal(16, active.GetProperty("criteria").GetArrayLength());
 
         var rules = BaselineMethodology.Create();
-        var put = await Admin.PutAsJsonAsync($"/api/methodology/drafts/{baselineId}", new { name = "hack", rules }, J);
+        var put = await Admin.PutAsJsonAsync($"/api/methodology/drafts/{baselineId}", new { name = "hack", rules, expectedRevision = 0 }, J);
         Assert.Equal(HttpStatusCode.Conflict, put.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await Admin.DeleteAsync($"/api/methodology/drafts/{baselineId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await Admin.DeleteAsync($"/api/methodology/drafts/{baselineId}?revision=0")).StatusCode);
     }
 
     // =============================================================================================================
@@ -211,7 +211,7 @@ public class MethodologyApiTests(MethodologyWebAppFactory f) : IClassFixture<Met
         {
             Key = "zoningScore", Name = "Zoning", Category = CriterionCategory.Site, Kind = CriterionKind.Percentile, Field = "zoningDensity", MaxPoints = 5
         }] };
-        var bad = await Admin.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name = "x", rules = bogus }, J);
+        var bad = await Admin.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name = "x", rules = bogus, expectedRevision = await RevisionAsync(id) }, J);
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         Assert.Contains("zoningDensity", await bad.Content.ReadAsStringAsync());
 
@@ -349,7 +349,7 @@ public class MethodologyApiTests(MethodologyWebAppFactory f) : IClassFixture<Met
         Assert.Equal("Publish", acts[1].GetProperty("reason").GetString());
 
         // Published rules are immutable; they can be duplicated into a new draft.
-        Assert.Equal(HttpStatusCode.Conflict, (await Admin.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name = "x", rules }, J)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await Admin.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name = "x", rules, expectedRevision = await RevisionAsync(id) }, J)).StatusCode);
         var dup = await Json(await Admin.PostAsJsonAsync($"/api/methodology/versions/{id}/duplicate", new { name = "copy" }));
         Assert.Equal("Draft", dup.GetProperty("version").GetProperty("status").GetString());
     }
@@ -387,8 +387,12 @@ public class MethodologyApiTests(MethodologyWebAppFactory f) : IClassFixture<Met
 
         f.Faults.FailNextActivation = true;   // throws AFTER all 1,500 live rows were updated, before commit
         var resp = await PublishAsync(id, active, preview.GetProperty("rulesHash").GetString()!);
-        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
-        Assert.Contains("rolled back", await resp.Content.ReadAsStringAsync());
+        // A database failure is a 503 with a generic message: no database error text reaches the client.
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+        var body = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("rolled back", body);
+        Assert.Contains("methodology_failed", body);
+        Assert.DoesNotContain("Injected", body);
         Assert.Equal(active, await ActiveIdAsync());
         Assert.Equal(before, await LiveAsync());
         Assert.Equal("Draft", (await Json(await Anon.GetAsync($"/api/methodology/versions/{id}"))).GetProperty("version").GetProperty("status").GetString());
@@ -548,9 +552,14 @@ public class MethodologyApiTests(MethodologyWebAppFactory f) : IClassFixture<Met
 
     private async Task<JsonElement> SaveAsync(int id, MethodologyRules rules)
     {
-        var name = (await Json(await Anon.GetAsync($"/api/methodology/versions/{id}"))).GetProperty("version").GetProperty("name").GetString();
-        return await Json(await Admin.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name, changeSummary = "test", rules }, J));
+        var v = (await Json(await Anon.GetAsync($"/api/methodology/versions/{id}"))).GetProperty("version");
+        var name = v.GetProperty("name").GetString();
+        return await Json(await Admin.PutAsJsonAsync($"/api/methodology/drafts/{id}",
+            new { name, changeSummary = "test", rules, expectedRevision = v.GetProperty("revision").GetInt32() }, J));
     }
+
+    private async Task<int> RevisionAsync(int id) =>
+        (await Json(await Anon.GetAsync($"/api/methodology/versions/{id}"))).GetProperty("version").GetProperty("revision").GetInt32();
 
     private async Task<JsonElement> PreviewAsync(int id) => await Json(await Admin.PostAsync($"/api/methodology/versions/{id}/preview?topN=5", null));
 

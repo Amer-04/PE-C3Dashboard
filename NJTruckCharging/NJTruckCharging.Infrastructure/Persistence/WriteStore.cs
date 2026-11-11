@@ -97,7 +97,9 @@ public sealed class WriteStore(AppDbContext db, ILogger<WriteStore> logger) : IW
 
     public async Task UpdateScoreStatisticsAsync(CancellationToken ct = default)
     {
-        if (db.Database.IsPostgres()) { await db.Database.ExecuteSqlRawAsync("ANALYZE \"CandidateSites\";", ct); return; }
+        // PostgreSQL (cloud): skipped. Only the table owner may ANALYZE, the API's logins are deliberately not owners, and
+        // autovacuum re-analyzes CandidateSites by itself after a publish rewrites ~30k rows.
+        if (db.Database.IsPostgres()) return;
         if (!db.Database.IsSqlServer()) return;
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>

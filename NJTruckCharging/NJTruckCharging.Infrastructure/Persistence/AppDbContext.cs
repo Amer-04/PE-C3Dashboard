@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MethodologyVersion> MethodologyVersions => Set<MethodologyVersion>();
     public DbSet<MethodologyState> MethodologyState => Set<MethodologyState>();
     public DbSet<MethodologyActivation> MethodologyActivations => Set<MethodologyActivation>();
+    public DbSet<MethodologyChange> MethodologyChanges => Set<MethodologyChange>();
     public DbSet<SiteVersionScore> SiteVersionScores => Set<SiteVersionScore>();
     public DbSet<CustomDataField> CustomDataFields => Set<CustomDataField>();
     public DbSet<CustomFieldValue> CustomFieldValues => Set<CustomFieldValue>();

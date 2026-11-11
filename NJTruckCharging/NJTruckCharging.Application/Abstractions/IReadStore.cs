@@ -22,6 +22,7 @@ public interface IReadStore
     IQueryable<ResearchHistoryEntry> ResearchHistory { get; }
     IQueryable<MethodologyVersion> MethodologyVersions { get; }
     IQueryable<MethodologyActivation> MethodologyActivations { get; }
+    IQueryable<MethodologyChange> MethodologyChanges { get; }
     IQueryable<SiteVersionScore> SiteVersionScores { get; }
 
     Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken ct = default);

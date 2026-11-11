@@ -35,6 +35,9 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Development");
         builder.UseSetting("ConnectionStrings:DefaultConnection", TestConnection);
         builder.UseSetting("Import:WorkbookPath", "");        // skip the 30k-row workbook import
+        // Tests run many recalculations from one client: lift the per-user rate limits (one test lowers them again).
+        builder.UseSetting("Methodology:RateLimits:ScoringPerWindow", "100000");
+        builder.UseSetting("Methodology:RateLimits:EditsPerMinute", "100000");
         builder.ConfigureServices(services =>
         {
             // TestServer has no TCP peer: present requests as coming from loopback (the trusted dashboard host) unless a

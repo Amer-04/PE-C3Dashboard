@@ -106,7 +106,7 @@ or a `c3_*` role already exists.
 ```powershell
 $env:C3_SOURCE = 'Server=(localdb)\MSSQLLocalDB;Database=NJTruckCharging_CloudSource_20261110;Trusted_Connection=True;TrustServerCertificate=True'
 $env:C3_TARGET = "Host=<pooler-host>;Port=5432;Database=postgres;Username=c3_migrator.olxmmztusojqfyvnzusx;Password=$env:C3_MIGRATOR_PASSWORD;SSL Mode=Require"
-dotnet run --project NJTruckCharging.CloudCopy -- create-schema   # schema c3 + 18 tables (sql/02-c3-tables.sql)
+dotnet run --project NJTruckCharging.CloudCopy -- create-schema   # schema c3 + 19 tables (sql/02-c3-tables.sql)
 dotnet run --project NJTruckCharging.CloudCopy -- copy            # refuses unless every c3 table is empty
 dotnet run --project NJTruckCharging.CloudCopy -- verify          # must print: VERIFIED: every table is identical.
 dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runtime-grants.sql
@@ -129,6 +129,8 @@ dotnet run --project NJTruckCharging.CloudCopy -- secure          # sql/03-runti
 | `Auth__Supabase__PublishableKey` | the project's **publishable** key (same as Netlify). Required by the API since self-registration support: it asks Supabase whether each account is still active and confirmed |
 | `Auth__AccessRule` | leave **unset** until the rollout in `EMPLOYEE_SELF_REGISTRATION.md` reaches phase 2 |
 | `Auth__DomainExceptionUserIds` | from phase 2: user ids of administrators without a company address (at most 3); leave **unset** before |
+| `Methodology__CloudEditing__Enabled` | leave **unset** until shared methodology editing is installed (`METHODOLOGY_EDITING.md`); then `true` |
+| `ConnectionStrings__MethodologyWriter` | only with the line above: the restricted `c3_methodology_writer` login (never the read-only one) |
 | `Cors__Origins__0` | `https://<site>.netlify.app` |
 | `GoogleMaps__ApiKey` | leave empty (OpenStreetMap; avoids Google charges) |
 

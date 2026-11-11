@@ -20,7 +20,14 @@ public enum ActivationFailure
 
 public sealed record ActivateCommand(
     int VersionId, int? ExpectedActiveVersionId, string ExpectedRulesHash,
-    ActivationReason Reason, DateTimeOffset Now, string? Note);
+    ActivationReason Reason, DateTimeOffset Now, string? Note)
+{
+    /// <summary>Who switched live scoring (null user id/e-mail for system re-applications).</summary>
+    public string? ActorUserId { get; init; }
+    public string? ActorEmail { get; init; }
+    /// <summary>Audit entry written inside the activation transaction (so it exists exactly when the switch happened).</summary>
+    public MethodologyChange? Audit { get; init; }
+}
 
 public sealed record ActivateResult(ActivationFailure Failure, string? Message, int SitesUpdated, int? PreviousVersionId)
 {
@@ -43,6 +50,16 @@ public interface IMethodologyStore
     Task AddVersionAsync(MethodologyVersion version, CancellationToken ct = default);
     Task DeleteVersionAsync(MethodologyVersion version, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
+
+    /// <summary>Tracks an audit entry; it is written by the next <see cref="SaveChangesAsync"/> together with the change.</summary>
+    void AddChange(MethodologyChange change);
+
+    /// <summary>
+    /// Deletes stored proposed scores of every version NOT in <paramref name="keepVersionIds"/> and marks those versions as
+    /// not previewed (so they must be reviewed again before publishing). Bounds database growth; runs under the scoring
+    /// lock. Returns the number of versions pruned, or -1 if the lock was busy (nothing changed).
+    /// </summary>
+    Task<int> PruneStoredScoresAsync(IReadOnlyCollection<int> keepVersionIds, CancellationToken ct = default);
 
     /// <summary>Creates the singleton state row if missing.</summary>
     Task EnsureStateAsync(CancellationToken ct = default);

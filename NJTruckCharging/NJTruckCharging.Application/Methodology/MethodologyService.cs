@@ -19,9 +19,16 @@ public sealed class MethodologyService(
     IWriteStore write,
     ActiveMethodologyCache cache,
     FieldStatsCache fieldStats,
+    ScoringJobGate gate,
     TimeProvider clock,
     ILogger<MethodologyService> logger)
 {
+    /// <summary>
+    /// Proposed scores are kept for the baseline, the active and previous versions and this many most recently reviewed
+    /// other versions; older ones are pruned (each copy is one row per site) and must be reviewed again to publish.
+    /// </summary>
+    public const int KeepReviewedVersions = 5;
+
     public const string TieBreak =
         "Within each segment: score (high → low), then distance to exit (closer first), then the original workbook rank, then Site ID.";
     public const int MaxTopN = 50;
@@ -134,8 +141,34 @@ public sealed class MethodologyService(
             from a in read.MethodologyActivations
             join v in read.MethodologyVersions on a.VersionId equals v.Id
             orderby a.Id descending
-            select new ActivationDto(a.Id, a.VersionId, v.Name, a.PreviousVersionId, a.Reason, a.AtUtc, a.SitesScored, a.Note), ct);
+            select new ActivationDto(a.Id, a.VersionId, v.Name, a.PreviousVersionId, a.Reason, a.AtUtc, a.SitesScored, a.Note)
+            { ActorUserId = a.ActorUserId, ActorEmail = a.ActorEmail }, ct);
         return rows;
+    }
+
+    /// <summary>The audit trail, newest first (optionally for one version).</summary>
+    public async Task<ChangeLogPageDto> GetChangesAsync(int? versionId, int page, int pageSize, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var q = read.MethodologyChanges;
+        if (versionId is { } vid) q = q.Where(c => c.VersionId == vid);
+        var total = await read.CountAsync(q, ct);
+        var rows = await read.ToListAsync(q.OrderByDescending(c => c.Id).Skip((page - 1) * pageSize).Take(pageSize), ct);
+        return new ChangeLogPageDto(total, page, pageSize, rows.Select(c => new ChangeLogEntryDto(
+            c.Id, c.VersionId, c.VersionName, c.Action, c.AtUtc, c.ActorUserId, c.ActorEmail, c.RevisionBefore, c.RevisionAfter,
+            c.RulesHashBefore, c.RulesHashAfter, c.PreviousActiveVersionId,
+            c.ChangesJson is null ? [] : JsonSerializer.Deserialize<List<RuleChangeDto>>(c.ChangesJson, MethodologyJson.Options) ?? [],
+            c.Note, c.BeforeJson is not null || c.AfterJson is not null)).ToList());
+    }
+
+    /// <summary>Full previous/new state recorded for one audited save or deletion.</summary>
+    public async Task<ChangeSnapshotDto?> GetChangeSnapshotAsync(long id, CancellationToken ct = default)
+    {
+        var c = await read.FirstOrDefaultAsync(read.MethodologyChanges.Where(x => x.Id == id), ct);
+        if (c is null) return null;
+        static VersionSnapshot? Parse(string? json) => json is null ? null : JsonSerializer.Deserialize<VersionSnapshot>(json, MethodologyJson.Options);
+        return new ChangeSnapshotDto(c.Id, Parse(c.BeforeJson), Parse(c.AfterJson));
     }
 
     public async Task<IReadOnlyList<FieldDto>> GetFieldsAsync(CancellationToken ct = default)
@@ -230,7 +263,7 @@ public sealed class MethodologyService(
     // Drafts (admin)
     // =============================================================================================================
 
-    public async Task<MethodologyOutcome<VersionDetailDto>> CreateDraftAsync(CreateDraftRequest req, CancellationToken ct = default)
+    public async Task<MethodologyOutcome<VersionDetailDto>> CreateDraftAsync(CreateDraftRequest req, MethodologyActor actor, CancellationToken ct = default)
     {
         var state = await store.GetStateAsync(ct);
         var sourceId = req.BasedOnVersionId ?? state?.ActiveVersionId;
@@ -244,18 +277,33 @@ public sealed class MethodologyService(
         var draft = new MethodologyVersion
         {
             Name = name, Status = MethodologyVersionStatus.Draft, RulesJson = source.RulesJson, RulesHash = source.RulesHash,
-            BasedOnVersionId = source.Id, CreatedAtUtc = now, UpdatedAtUtc = now
+            BasedOnVersionId = source.Id, CreatedAtUtc = now, UpdatedAtUtc = now, Revision = 1,
+            CreatedByUserId = actor.UserId, CreatedByEmail = actor.Email, UpdatedByUserId = actor.UserId, UpdatedByEmail = actor.Email
         };
         await store.AddVersionAsync(draft, ct);
+        store.AddChange(new MethodologyChange
+        {
+            VersionId = draft.Id, VersionName = draft.Name, Action = MethodologyChangeAction.CreateDraft, AtUtc = now,
+            ActorUserId = actor.UserId, ActorEmail = actor.Email, RevisionAfter = draft.Revision, RulesHashAfter = draft.RulesHash,
+            Note = $"Copied from v{source.Id} ({source.Name})",
+            // Before = the version it was copied from; after = the new draft (identical rules at creation).
+            BeforeJson = JsonSerializer.Serialize(new VersionSnapshot(source.Name, source.ChangeSummary, RulesOf(source)), MethodologyJson.Options),
+            AfterJson = JsonSerializer.Serialize(new VersionSnapshot(draft.Name, draft.ChangeSummary, RulesOf(draft)), MethodologyJson.Options),
+        });
+        await store.SaveChangesAsync(ct);
         return MethodologyOutcome<VersionDetailDto>.Ok((await GetVersionAsync(draft.Id, ct))!);
     }
 
-    public async Task<MethodologyOutcome<VersionDetailDto>> UpdateDraftAsync(int id, UpdateDraftRequest req, CancellationToken ct = default)
+    public async Task<MethodologyOutcome<VersionDetailDto>> UpdateDraftAsync(int id, UpdateDraftRequest req, MethodologyActor actor, CancellationToken ct = default)
     {
+        if (req.ExpectedRevision is null)
+            return MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.Invalid, "expectedRevision (the draft revision the edit is based on) is required.");
         var v = await store.FindVersionAsync(id, ct);
-        if (v is null) return MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.NotFound, "Version not found.");
+        if (v is null) return MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.NotFound, MethodologyCodes.DraftConflict,
+            "This draft no longer exists (it was deleted by someone else). Reload the page.");
         if (v.Status != MethodologyVersionStatus.Draft || v.IsBaseline)
             return MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.Conflict, "Only drafts can be edited; published versions (and baseline Version 1) are immutable. Duplicate it as a draft instead.");
+        if (v.Revision != req.ExpectedRevision) return DraftConflict<VersionDetailDto>(v);
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Trim().Length > 120)
             return MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.Invalid, "A name of up to 120 characters is required.");
         if ((req.ChangeSummary ?? "").Length > 4000)
@@ -265,24 +313,79 @@ public sealed class MethodologyService(
             return MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.Invalid, "The rules are not valid.", issues);
 
         var rules = req.Rules with { SchemaVersion = MethodologyRules.CurrentSchemaVersion };
+        var before = new VersionSnapshot(v.Name, v.ChangeSummary, RulesOf(v));
+        var hashBefore = v.RulesHash;
+        var revisionBefore = v.Revision;
+        var now = clock.GetUtcNow();
         v.Name = req.Name.Trim();
         v.ChangeSummary = string.IsNullOrWhiteSpace(req.ChangeSummary) ? null : req.ChangeSummary.Trim();
         v.RulesJson = MethodologyJson.Serialize(rules);
         v.RulesHash = rules.ComputeHash();     // any stored preview is now stale (hash differs) → must preview again
-        v.UpdatedAtUtc = clock.GetUtcNow();
-        await store.SaveChangesAsync(ct);
+        v.UpdatedAtUtc = now;
+        v.UpdatedByUserId = actor.UserId;
+        v.UpdatedByEmail = actor.Email;
+        v.Revision = revisionBefore + 1;
+        var changes = RuleDiff.Compare(before.Rules, rules, await DefinitionsAsync(ct));
+        if (before.Name != v.Name) changes.Insert(0, new("(name)", "Version name", RuleChangeKind.Modified, [$"“{before.Name}” → “{v.Name}”"]));
+        if (before.ChangeSummary != v.ChangeSummary) changes.Insert(0, new("(summary)", "Change summary", RuleChangeKind.Modified, ["Edited"]));
+        store.AddChange(new MethodologyChange
+        {
+            VersionId = v.Id, VersionName = v.Name, Action = MethodologyChangeAction.SaveDraft, AtUtc = now,
+            ActorUserId = actor.UserId, ActorEmail = actor.Email, RevisionBefore = revisionBefore, RevisionAfter = v.Revision,
+            RulesHashBefore = hashBefore, RulesHashAfter = v.RulesHash,
+            ChangesJson = JsonSerializer.Serialize(changes, MethodologyJson.Options),
+            BeforeJson = JsonSerializer.Serialize(before, MethodologyJson.Options),
+            AfterJson = JsonSerializer.Serialize(new VersionSnapshot(v.Name, v.ChangeSummary, rules), MethodologyJson.Options),
+        });
+        try
+        {
+            // The revision is a concurrency token: the UPDATE only matches if nobody saved in between.
+            await store.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (IsConcurrencyConflict(ex))
+        {
+            var latest = await read.FirstOrDefaultAsync(read.MethodologyVersions.Where(x => x.Id == id), ct);
+            return latest is null
+                ? MethodologyOutcome<VersionDetailDto>.Fail(MethodologyError.NotFound, MethodologyCodes.DraftConflict, "This draft was deleted by someone else. Reload the page.")
+                : DraftConflict<VersionDetailDto>(latest);
+        }
         return MethodologyOutcome<VersionDetailDto>.Ok((await GetVersionAsync(id, ct))!);
     }
 
-    public async Task<MethodologyOutcome<bool>> DeleteDraftAsync(int id, CancellationToken ct = default)
+    private static bool IsConcurrencyConflict(Exception ex) => ex.GetType().Name == "DbUpdateConcurrencyException";
+
+    private static MethodologyOutcome<T> DraftConflict<T>(MethodologyVersion latest) =>
+        MethodologyOutcome<T>.Fail(MethodologyError.Conflict, MethodologyCodes.DraftConflict,
+            $"This draft was changed by {latest.UpdatedByEmail ?? "someone else"} at {latest.UpdatedAtUtc:yyyy-MM-dd HH:mm} UTC " +
+            $"(revision {latest.Revision}) after you opened it. Your changes were NOT saved. Reload the draft to see the latest version, then re-apply your edits.");
+
+    public async Task<MethodologyOutcome<bool>> DeleteDraftAsync(int id, int? expectedRevision, MethodologyActor actor, CancellationToken ct = default)
     {
+        if (expectedRevision is null)
+            return MethodologyOutcome<bool>.Fail(MethodologyError.Invalid, "revision (the draft revision you are deleting) is required.");
         var v = await store.FindVersionAsync(id, ct);
         if (v is null) return MethodologyOutcome<bool>.Fail(MethodologyError.NotFound, "Version not found.");
         if (v.Status != MethodologyVersionStatus.Draft || v.IsBaseline)
             return MethodologyOutcome<bool>.Fail(MethodologyError.Conflict, "Published versions are kept permanently for history and rollback.");
-        await store.DeleteVersionAsync(v, ct);
+        if (v.Revision != expectedRevision) return DraftConflict<bool>(v);
+        store.AddChange(new MethodologyChange
+        {
+            VersionId = v.Id, VersionName = v.Name, Action = MethodologyChangeAction.DeleteDraft, AtUtc = clock.GetUtcNow(),
+            ActorUserId = actor.UserId, ActorEmail = actor.Email, RevisionBefore = v.Revision, RulesHashBefore = v.RulesHash,
+            BeforeJson = JsonSerializer.Serialize(new VersionSnapshot(v.Name, v.ChangeSummary, RulesOf(v)), MethodologyJson.Options),
+        });
+        try { await store.DeleteVersionAsync(v, ct); }
+        catch (Exception ex) when (IsConcurrencyConflict(ex))
+        {
+            return MethodologyOutcome<bool>.Fail(MethodologyError.Conflict, MethodologyCodes.DraftConflict,
+                "This draft was changed or deleted by someone else at the same time. Reload the page.");
+        }
         return MethodologyOutcome<bool>.Ok(true);
     }
+
+    private static MethodologyOutcome<T> Busy<T>() =>
+        MethodologyOutcome<T>.Fail(MethodologyError.Conflict, MethodologyCodes.ScoringBusy,
+            "Another scoring recalculation is running. Try again when it has finished (usually under a minute).");
 
     // =============================================================================================================
     // Preview + publish (admin)
@@ -292,8 +395,10 @@ public sealed class MethodologyService(
     /// Validates, scores all sites with the version's rules, re-ranks every segment and stores the proposed scores
     /// (never the live ones), returning a comparison against the active methodology.
     /// </summary>
-    public async Task<MethodologyOutcome<PreviewSummaryDto>> PreviewAsync(int id, int topN = 10, CancellationToken ct = default)
+    public async Task<MethodologyOutcome<PreviewSummaryDto>> PreviewAsync(int id, int topN, MethodologyActor actor, CancellationToken ct = default)
     {
+        using var lease = gate.TryEnter();
+        if (lease is null) return Busy<PreviewSummaryDto>();
         topN = Math.Clamp(topN, 1, MaxTopN);
         var v = await store.FindVersionAsync(id, ct);
         if (v is null) return MethodologyOutcome<PreviewSummaryDto>.Fail(MethodologyError.NotFound, "Version not found.");
@@ -323,6 +428,18 @@ public sealed class MethodologyService(
             state.DataVersion, json, clock.GetUtcNow(), ct);
         logger.LogInformation("Preview v{Id}: {Sites} sites — load {Load} ms, score+compare {Score} ms, store {Store} ms",
             v.Id, sites.Count, tLoad, tScore - tLoad, sw.ElapsedMilliseconds - tScore);
+        if (stored == ActivationFailure.None)
+        {
+            store.AddChange(new MethodologyChange
+            {
+                VersionId = v.Id, VersionName = v.Name, Action = MethodologyChangeAction.Preview, AtUtc = clock.GetUtcNow(),
+                ActorUserId = actor.UserId, ActorEmail = actor.Email, RevisionBefore = v.Revision, RevisionAfter = v.Revision,
+                RulesHashAfter = v.RulesHash,
+                Note = $"Reviewed results for {sites.Count:N0} sites: {summary.ScoresChanged:N0} scores and {summary.RanksChanged:N0} ranks would change."
+            });
+            await store.SaveChangesAsync(ct);
+            await PruneAsync(state, v.Id, ct);
+        }
         return stored switch
         {
             ActivationFailure.None => MethodologyOutcome<PreviewSummaryDto>.Ok(summary with { ElapsedMs = sw.ElapsedMilliseconds }),
@@ -336,7 +453,7 @@ public sealed class MethodologyService(
     /// Atomically activates a previewed draft (publish) or a previous version (restore). Requires explicit
     /// confirmation, the active version the preview was compared against, and the previewed rules hash.
     /// </summary>
-    public async Task<MethodologyOutcome<PublishResultDto>> PublishAsync(int id, PublishRequest req, CancellationToken ct = default)
+    public async Task<MethodologyOutcome<PublishResultDto>> PublishAsync(int id, PublishRequest req, MethodologyActor actor, CancellationToken ct = default)
     {
         if (!req.Confirm)
             return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "Applying scoring recalculates every site; explicit confirmation is required.");
@@ -354,18 +471,45 @@ public sealed class MethodologyService(
         if (issues.Any(i => i.Severity == IssueSeverity.Error))
             return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Invalid, "The rules are not valid.", issues);
 
+        using var lease = gate.TryEnter();
+        if (lease is null) return Busy<PublishResultDto>();
+
         var sw = Stopwatch.StartNew();
         var reason = v.Status == MethodologyVersionStatus.Published ? ActivationReason.Restore : ActivationReason.Publish;
-        var result = await store.ActivateAsync(new ActivateCommand(id, req.ExpectedActiveVersionId, req.RulesHash, reason,
-            clock.GetUtcNow(), string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim()), ct);
+        var now = clock.GetUtcNow();
+        var note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim();
+        var current = cache.Current is { } c && c.VersionId == state.ActiveVersionId ? c : null;
+        // Full previous (live) and new methodology for the audit trail.
+        var previousVersion = state.ActiveVersionId is { } pid
+            ? await read.FirstOrDefaultAsync(read.MethodologyVersions.Where(x => x.Id == pid), ct) : null;
+        var changes = current is null ? [] : RuleDiff.Compare(current.Rules, RulesOf(v), await DefinitionsAsync(ct));
+        var result = await store.ActivateAsync(new ActivateCommand(id, req.ExpectedActiveVersionId, req.RulesHash, reason, now, note)
+        {
+            ActorUserId = actor.UserId, ActorEmail = actor.Email,
+            Audit = new MethodologyChange
+            {
+                VersionId = v.Id, VersionName = v.Name, AtUtc = now, ActorUserId = actor.UserId, ActorEmail = actor.Email,
+                Action = reason == ActivationReason.Restore ? MethodologyChangeAction.Restore : MethodologyChangeAction.Publish,
+                RevisionBefore = v.Revision, RevisionAfter = v.Revision, RulesHashBefore = current?.RulesHash, RulesHashAfter = v.RulesHash,
+                PreviousActiveVersionId = state.ActiveVersionId, ChangesJson = JsonSerializer.Serialize(changes, MethodologyJson.Options), Note = note,
+                BeforeJson = previousVersion is null ? null
+                    : JsonSerializer.Serialize(new VersionSnapshot(previousVersion.Name, previousVersion.ChangeSummary, RulesOf(previousVersion)), MethodologyJson.Options),
+                AfterJson = JsonSerializer.Serialize(new VersionSnapshot(v.Name, v.ChangeSummary, RulesOf(v)), MethodologyJson.Options),
+            },
+        }, ct);
         if (!result.Ok)
-            return MethodologyOutcome<PublishResultDto>.Fail(
-                result.Failure == ActivationFailure.NotFound ? MethodologyError.NotFound : MethodologyError.Conflict, result.Message!);
+            return result.Failure switch
+            {
+                ActivationFailure.NotFound => MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.NotFound, result.Message!),
+                ActivationFailure.Failed => MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Conflict, MethodologyCodes.Failed, result.Message!),
+                _ => MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Conflict, result.Message!),
+            };
 
         await AfterScoresChangedAsync(ct);
+        await PruneAsync(await store.GetStateAsync(ct), null, ct);
         sw.Stop();
-        logger.LogInformation("Methodology version {Id} activated ({Reason}); {Sites} sites updated in {Ms} ms",
-            id, reason, result.SitesUpdated, sw.ElapsedMilliseconds);
+        logger.LogInformation("Methodology version {Id} activated ({Reason}) by {User}; {Sites} sites updated in {Ms} ms",
+            id, reason, actor.UserId ?? "(local)", result.SitesUpdated, sw.ElapsedMilliseconds);
         return MethodologyOutcome<PublishResultDto>.Ok(new PublishResultDto(id, result.PreviousVersionId, result.SitesUpdated, sw.ElapsedMilliseconds));
     }
 
@@ -374,6 +518,8 @@ public sealed class MethodologyService(
     {
         var state = await store.GetStateAsync(ct);
         if (state?.ActiveVersionId is not { } id) return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Conflict, "No active methodology.");
+        using var lease = gate.TryEnter();
+        if (lease is null) return Busy<PublishResultDto>();
         var v = (await store.FindVersionAsync(id, ct))!;
         var rules = RulesOf(v);
         var sw = Stopwatch.StartNew();
@@ -385,6 +531,34 @@ public sealed class MethodologyService(
         if (!act.Ok) return MethodologyOutcome<PublishResultDto>.Fail(MethodologyError.Conflict, act.Message!);
         await AfterScoresChangedAsync(ct);
         return MethodologyOutcome<PublishResultDto>.Ok(new PublishResultDto(id, id, act.SitesUpdated, sw.ElapsedMilliseconds));
+    }
+
+    /// <summary>
+    /// Keeps stored proposed scores only for the baseline, active, previous-active and <paramref name="justReviewed"/>
+    /// versions plus the <see cref="KeepReviewedVersions"/> most recently reviewed others. Best effort: a failure is
+    /// logged and never fails the request (the scores were already saved).
+    /// </summary>
+    private async Task PruneAsync(MethodologyState? state, int? justReviewed, CancellationToken ct)
+    {
+        try
+        {
+            var versions = await read.ToListAsync(read.MethodologyVersions
+                .Select(x => new { x.Id, x.IsBaseline, x.PreviewRulesHash, x.PreviewedAtUtc }), ct);
+            var keep = new HashSet<int>(versions.Where(x => x.IsBaseline).Select(x => x.Id));
+            if (state?.ActiveVersionId is { } a) keep.Add(a);
+            if (state?.PreviousActiveVersionId is { } p) keep.Add(p);
+            if (justReviewed is { } j) keep.Add(j);
+            foreach (var x in versions.Where(x => x.PreviewRulesHash is not null && !keep.Contains(x.Id))
+                         .OrderByDescending(x => x.PreviewedAtUtc).Take(KeepReviewedVersions))
+                keep.Add(x.Id);
+            if (!versions.Any(x => x.PreviewRulesHash is not null && !keep.Contains(x.Id))) return;
+            var pruned = await store.PruneStoredScoresAsync(keep, ct);
+            if (pruned > 0) logger.LogInformation("Pruned stored proposed scores of {Count} older reviewed version(s)", pruned);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Pruning stored proposed scores failed (non-fatal)");
+        }
     }
 
     private async Task AfterScoresChangedAsync(CancellationToken ct)
@@ -415,7 +589,10 @@ public sealed class MethodologyService(
             state?.PreviousActiveVersionId == v.Id, v.RulesHash, v.ChangeSummary, v.BasedOnVersionId,
             v.CreatedAtUtc, v.UpdatedAtUtc, v.PublishedAtUtc, v.PreviewedAtUtc,
             v.PreviewRulesHash == v.RulesHash && v.ScoresDataVersion == state?.DataVersion,
-            rules.Criteria.Count, rules.Criteria.Count(c => c.Enabled), v.RulesHash == baselineHash);
+            rules.Criteria.Count, rules.Criteria.Count(c => c.Enabled), v.RulesHash == baselineHash)
+        {
+            Revision = v.Revision, CreatedByEmail = v.CreatedByEmail, UpdatedByEmail = v.UpdatedByEmail, PublishedByEmail = v.PublishedByEmail,
+        };
     }
 
     public static List<CriterionViewDto> Views(MethodologyRules rules, FieldCatalog? catalog = null) =>

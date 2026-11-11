@@ -7,8 +7,9 @@ import { PreviewSummary, PublishResult } from '../../core/methodology.models';
 /**
  * Final confirmation before the live scores of every site are replaced ("Apply Scoring", or "Restore" for a previous
  * method). The typed phrase (APPLY v{id} / RESTORE v{id}, built from the reviewed version) is a deliberate-action
- * safeguard only; the server authorises methodology changes (trusted internal network + same-origin requests) and
- * refuses stale results (rules hash, expected active version and data version must all still match the review).
+ * safeguard only; the server authorises methodology changes (signed-in approved C3 user, or the trusted internal network
+ * without sign-in), refuses stale results (rules hash, expected active version and data version must all still match
+ * the review) and applies a version only once, however often the button is pressed.
  */
 @Component({
   selector: 'app-publish-dialog',
@@ -23,6 +24,8 @@ import { PreviewSummary, PublishResult } from '../../core/methodology.models';
         at once: <b>{{ p.scoresChanged | number }}</b> scores and <b>{{ p.ranksChanged | number }}</b> rankings change.
         The dashboard, map, site details, screening, saved sites, comparison and exports all switch to this method.
         The current method (version {{ p.comparedToVersionId }}, “{{ p.comparedToName }}”) is kept and can be restored later.</p>
+      <p class="warn" role="note"><b>⚠ This changes the shared C3 methodology for the whole team.</b> Everyone signed in to C3 sees the
+        recalculated scores and rankings immediately. Your name and e-mail are recorded in the change history, and the previous method can be restored at any time.</p>
       <p id="pub-kept" class="muted small">Bookmarks, research, screening decisions, contacts and the original workbook values are not changed.</p>
 
       <label class="field"><span>Note for the change log (optional)</span>
@@ -60,6 +63,7 @@ import { PreviewSummary, PublishResult } from '../../core/methodology.models';
     .field input:focus, .field textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
     .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
     .err { color: var(--critical); }
+    .warn { background: var(--pill-amber-bg); color: var(--text); border: 1px solid var(--pill-amber); border-radius: 8px; padding: 10px 12px; font-size: 14px !important; }
     :host-context([data-theme="dark"]) .err { color: #f87171; }
     code { font-weight: 700; font-size: 15px; background: var(--pill-amber-bg); color: var(--pill-amber); padding: 1px 6px; border-radius: 4px; }
   `],

@@ -15,6 +15,11 @@ public class MethodologyVersionConfiguration : IEntityTypeConfiguration<Methodol
         b.Property(x => x.RulesHash).HasMaxLength(64).IsRequired();
         b.Property(x => x.PreviewRulesHash).HasMaxLength(64);
         b.Property(x => x.ChangeSummary).HasMaxLength(4000);
+        b.Property(x => x.Revision).IsConcurrencyToken();
+        foreach (var p in new[] { nameof(MethodologyVersion.CreatedByUserId), nameof(MethodologyVersion.UpdatedByUserId), nameof(MethodologyVersion.PublishedByUserId) })
+            b.Property(p).HasMaxLength(64);
+        foreach (var p in new[] { nameof(MethodologyVersion.CreatedByEmail), nameof(MethodologyVersion.UpdatedByEmail), nameof(MethodologyVersion.PublishedByEmail) })
+            b.Property(p).HasMaxLength(320);
         // Exactly one baseline version.
         b.HasIndex(x => x.IsBaseline).IsUnique().HasFilter("[IsBaseline] = 1");
     }
@@ -39,7 +44,27 @@ public class MethodologyActivationConfiguration : IEntityTypeConfiguration<Metho
         b.ToTable("MethodologyActivations");
         b.Property(x => x.Reason).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.Note).HasMaxLength(1000);
+        b.Property(x => x.ActorUserId).HasMaxLength(64);
+        b.Property(x => x.ActorEmail).HasMaxLength(320);
         b.HasIndex(x => x.VersionId);
+    }
+}
+
+public class MethodologyChangeConfiguration : IEntityTypeConfiguration<MethodologyChange>
+{
+    public void Configure(EntityTypeBuilder<MethodologyChange> b)
+    {
+        b.ToTable("MethodologyChangeLog");
+        b.Property(x => x.VersionName).HasMaxLength(120).IsRequired();
+        b.Property(x => x.Action).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.ActorUserId).HasMaxLength(64);
+        b.Property(x => x.ActorEmail).HasMaxLength(320);
+        b.Property(x => x.RulesHashBefore).HasMaxLength(64);
+        b.Property(x => x.RulesHashAfter).HasMaxLength(64);
+        b.Property(x => x.Note).HasMaxLength(1000);
+        // No foreign key to MethodologyVersions: the audit trail outlives deleted drafts.
+        b.HasIndex(x => new { x.VersionId, x.AtUtc });
+        b.HasIndex(x => x.AtUtc);
     }
 }
 

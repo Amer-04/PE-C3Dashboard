@@ -20,6 +20,7 @@ public sealed class ReadStore(AppDbContext db) : IReadStore
     public IQueryable<ResearchHistoryEntry> ResearchHistory => db.ResearchHistory.AsNoTracking();
     public IQueryable<MethodologyVersion> MethodologyVersions => db.MethodologyVersions.AsNoTracking();
     public IQueryable<MethodologyActivation> MethodologyActivations => db.MethodologyActivations.AsNoTracking();
+    public IQueryable<MethodologyChange> MethodologyChanges => db.MethodologyChanges.AsNoTracking();
     public IQueryable<SiteVersionScore> SiteVersionScores => db.SiteVersionScores.AsNoTracking();
 
     public Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken ct = default) =>
