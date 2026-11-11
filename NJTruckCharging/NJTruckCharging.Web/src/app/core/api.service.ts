@@ -8,7 +8,7 @@ import {
   UpsertScreeningRequest, ResearchHistoryEntry, SiteResearch, ReviewQueue, ResearchSummary,
 } from './models';
 import {
-  Activation, ActiveMethodology, ComparisonPage, MethodologyRules, PreviewSummary, PublishResult, ScoringFieldInfo,
+  Activation, ActiveMethodology, ChangeLogPage, ChangeSnapshot, ComparisonPage, EditingStatus, MethodologyRules, PreviewSummary, PublishResult, ScoringFieldInfo,
   ValidationResult, VersionDetail, VersionSummary, CustomField, CustomFieldRequest, CustomValue, ImportPreview, ImportResult,
 } from './methodology.models';
 
@@ -62,10 +62,20 @@ export class ApiService {
   duplicateVersion(id: number, name: string | null) {
     return this.http.post<VersionDetail>(`${this.base}/methodology/versions/${id}/duplicate`, { name });
   }
-  saveDraft(id: number, name: string, changeSummary: string | null, rules: MethodologyRules) {
-    return this.http.put<VersionDetail>(`${this.base}/methodology/drafts/${id}`, { name, changeSummary, rules });
+  /** `expectedRevision`: the draft revision the edit started from (the server refuses a save based on an older one). */
+  saveDraft(id: number, name: string, changeSummary: string | null, rules: MethodologyRules, expectedRevision: number) {
+    return this.http.put<VersionDetail>(`${this.base}/methodology/drafts/${id}`, { name, changeSummary, rules, expectedRevision });
   }
-  deleteDraft(id: number) { return this.http.delete<void>(`${this.base}/methodology/drafts/${id}`); }
+  deleteDraft(id: number, revision: number) {
+    return this.http.delete<void>(`${this.base}/methodology/drafts/${id}`, { params: new HttpParams().set('revision', revision) });
+  }
+  methodologyEditing() { return this.http.get<EditingStatus>(`${this.base}/methodology/editing`); }
+  methodologyChanges(versionId: number | null, page = 1, pageSize = 25) {
+    let p = new HttpParams().set('page', page).set('pageSize', pageSize);
+    if (versionId !== null) p = p.set('versionId', versionId);
+    return this.http.get<ChangeLogPage>(`${this.base}/methodology/changes`, { params: p });
+  }
+  changeSnapshot(id: number) { return this.http.get<ChangeSnapshot>(`${this.base}/methodology/changes/${id}/snapshot`); }
   previewVersion(id: number, topN: number) {
     return this.http.post<PreviewSummary>(`${this.base}/methodology/versions/${id}/preview?topN=${topN}`, null);
   }

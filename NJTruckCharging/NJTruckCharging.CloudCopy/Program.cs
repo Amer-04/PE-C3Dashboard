@@ -18,6 +18,7 @@ using NJTruckCharging.Infrastructure.Persistence;
 //   C3_TARGET              PostgreSQL connection string AS c3_migrator (Supabase pooler user "c3_migrator.<project-ref>").
 //   C3_MIGRATOR_PASSWORD   } only for "bootstrap-sql": turned into one-way SCRAM verifiers; the plain passwords never
 //   C3_READONLY_PASSWORD   } leave this machine.
+//   C3_WRITER_PASSWORD     only for "writer-bootstrap-sql" (the methodology writer login; same rules).
 //
 // Commands, in order:
 //   inventory-sql   print sql/00-inventory.sql (read-only; run in the Supabase SQL Editor)
@@ -30,6 +31,11 @@ using NJTruckCharging.Infrastructure.Persistence;
 //   secure          as c3_migrator: run sql/03-runtime-grants.sql (SELECT-only runtime role, RLS, no API-role access)
 //   lockdown-sql    print sql/04-lockdown.sql (run in the SQL Editor as postgres)
 //   check-sql       print sql/05-check-isolation.sql (read-only; run in the SQL Editor as postgres; all rows OK)
+//
+// Shared methodology editing (optional; see docs/deploy/METHODOLOGY_EDITING.md):
+//   writer-bootstrap-sql          print sql/09-methodology-writer-role.sql with a SCRAM verifier (SQL Editor, as postgres)
+//   methodology-editing           as c3_migrator: run sql/10-methodology-editing.sql (audit schema + writer permissions)
+//   methodology-editing-rollback  as c3_migrator: run sql/10-methodology-editing-rollback.sql (removes them; keeps data)
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 var command = args.FirstOrDefault() ?? "";
@@ -49,8 +55,13 @@ try
         case "bootstrap-sql": Console.WriteLine(Sql.Bootstrap()); return 0;
         case "lockdown-sql": Console.WriteLine(Sql.Read("04-lockdown.sql")); return 0;
         case "check-sql": Console.WriteLine(Sql.Read("05-check-isolation.sql")); return 0;
+        case "writer-bootstrap-sql": Console.WriteLine(Sql.WriterBootstrap()); return 0;
+        case "methodology-editing": return await RunAsMigratorAsync("10-methodology-editing.sql",
+            "Methodology editing installed: audit schema added; c3_methodology_writer may change methodology data and score columns only.");
+        case "methodology-editing-rollback": return await RunAsMigratorAsync("10-methodology-editing-rollback.sql",
+            "Methodology editing removed: writer permissions, policies and trigger dropped; all data kept. Then run 09-methodology-writer-role-rollback.sql and 04-lockdown.sql (as postgres).");
         default:
-            Console.Error.WriteLine("Usage: NJTruckCharging.CloudCopy inventory-sql | bootstrap-sql | script | check-login | create-schema | copy | verify | secure | lockdown-sql | check-sql");
+            Console.Error.WriteLine("Usage: NJTruckCharging.CloudCopy inventory-sql | bootstrap-sql | script | check-login | create-schema | copy | verify | secure | lockdown-sql | check-sql | writer-bootstrap-sql | methodology-editing | methodology-editing-rollback");
             return 2;
     }
 }
@@ -183,6 +194,18 @@ static async Task<int> SecureAsync()
     return 0;
 }
 
+static async Task<int> RunAsMigratorAsync(string file, string done)
+{
+    await using var t = Db.Target();
+    var who = await t.Database.SqlQueryRaw<string>("SELECT current_user::text AS \"Value\"").SingleAsync();
+    if (who != "c3_migrator") throw new InvalidOperationException($"Run this as c3_migrator (connected as {who}).");
+    await using var tx = await t.Database.BeginTransactionAsync();
+    await t.Database.ExecuteSqlRawAsync(Sql.Read(file).Replace("{", "{{").Replace("}", "}}"));
+    await tx.CommitAsync();
+    Console.WriteLine(done);
+    return 0;
+}
+
 static class Sql
 {
     public static string Read(string name)
@@ -199,6 +222,9 @@ static class Sql
             .Replace("{{READONLY_VERIFIER}}", Scram.Verifier(Password("C3_READONLY_PASSWORD")));
         return sql;
     }
+
+    public static string WriterBootstrap() =>
+        Read("09-methodology-writer-role.sql").Replace("{{WRITER_VERIFIER}}", Scram.Verifier(Password("C3_WRITER_PASSWORD")));
 
     private static string Password(string name)
     {

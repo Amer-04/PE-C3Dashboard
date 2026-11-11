@@ -8,6 +8,7 @@ import { MethodologyStore } from '../../core/methodology-store';
 import {
   Criterion, MethodologyRules, PreviewSummary, PublishResult, ScoringFieldInfo, ValidationIssue, ValidationResult, VersionDetail,
 } from '../../core/methodology.models';
+import { ChangeLogComponent } from './change-log.component';
 import { CriteriaBoardComponent } from './criteria-board.component';
 import { CriterionDialogComponent } from './criterion-dialog.component';
 import { cardItem } from './criterion-text';
@@ -22,7 +23,7 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
  */
 @Component({
   selector: 'app-methodology-editor-page',
-  imports: [DecimalPipe, DatePipe, RouterLink, CriteriaBoardComponent, CriterionDialogComponent, PreviewPanelComponent, PublishDialogComponent],
+  imports: [DecimalPipe, DatePipe, RouterLink, ChangeLogComponent, CriteriaBoardComponent, CriterionDialogComponent, PreviewPanelComponent, PublishDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mm">
@@ -48,8 +49,13 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
                 @if (d.version.basedOnVersionId) { <span class="mm-xs mm-muted">based on v{{ d.version.basedOnVersionId }}</span> }
                 <span class="mm-xs mm-muted">· updated {{ d.version.updatedAtUtc | date: 'medium' }}</span>
               </div>
+              <div class="attrib mm-xs mm-muted">
+                @if (d.version.createdByEmail) { Created by <b>{{ d.version.createdByEmail }}</b> }
+                @if (d.version.updatedByEmail && d.version.revision > 1) { · last saved by <b>{{ d.version.updatedByEmail }}</b> (revision {{ d.version.revision }}) }
+                @if (d.version.publishedByEmail) { · applied by <b>{{ d.version.publishedByEmail }}</b> on {{ d.version.publishedAtUtc | date: 'medium' }} }
+              </div>
             </div>
-            @if (d.version.status === 'Draft') {
+            @if (d.version.status === 'Draft' && store.canEdit()) {
               <button type="button" class="btn-ghost small mm-danger" [disabled]="!!busy()" (click)="deleteDraft()">Delete draft</button>
             }
           </div>
@@ -67,14 +73,28 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
             </ol>
           } @else {
             @if (d.version.changeSummary) { <p class="mm-muted">{{ d.version.changeSummary }}</p> }
+            @if (!store.canEdit()) {
+              <p class="mm-note">{{ store.editing().reason ?? 'Scoring rules are read-only here.' }} Every version and its history can still be viewed.</p>
+            } @else {
             <p class="mm-note">
               @if (d.version.isActive) { This scoring method is live — every dashboard view shows its scores. Applied methods never change: use <b>Edit Rule</b> on a rule to start a draft based on it. }
               @else { Applied methods never change. Use <b>Edit Rule</b> to start a draft based on this method, or <b>Review Results</b> then <b>Restore</b> to make it live again. }
             </p>
+            }
+          }
+          @if (conflict(); as cf) {
+            <div class="mm-note bad conflict" role="alert">
+              <p>{{ cf }}</p>
+              <div class="conflict-actions">
+                <button type="button" class="btn primary small" (click)="reloadLatest()">Reload the latest version (discard my unsaved edits)</button>
+                <button type="button" class="btn small" (click)="conflict.set(null)">Keep my edits on screen</button>
+              </div>
+            </div>
           }
         </section>
 
         <!-- ===== Sticky actions ===== -->
+        @if (store.canEdit()) {
         <div class="mm-actionbar" role="toolbar" aria-label="Draft actions">
           <button type="button" class="btn" (click)="openAdd()" [disabled]="!!busy()">＋ Add Rule</button>
           @if (editable()) {
@@ -102,6 +122,7 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
             }
           </span>
         </div>
+        }
         @if (message(); as m) { <p class="mm-note msg" [class.good]="!m.error" [class.bad]="m.error" role="status">{{ m.text }}</p> }
         @for (i of globalIssues(); track $index) { <p class="mm-note" [class.bad]="i.severity === 'Error'" [class.warn]="i.severity === 'Warning'">{{ i.message }}</p> }
 
@@ -129,7 +150,7 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
                                 : 'Read-only. Edit Rule opens a working draft based on this version.' }}</p>
             </div>
           </div>
-          <app-criteria-board [items]="cards()" [editable]="editable()" [busy]="!!busy()" [changedKeys]="changedKeys()" [issues]="issuesByKey()"
+          <app-criteria-board [items]="cards()" [editable]="editable()" [canEditRules]="store.canEdit()" [busy]="!!busy()" [changedKeys]="changedKeys()" [issues]="issuesByKey()"
                               (edit)="openEdit($event)" (toggle)="toggle($event)" (remove)="removeCriterion($event)" />
         </section>
 
@@ -148,6 +169,13 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
           <app-publish-dialog [preview]="p" [restore]="d.version.status === 'Published'"
                               (published)="onPublished($event)" (cancel)="dialog.set(false)" />
         }
+        <section class="panel">
+          <div class="mm-section-head"><div>
+            <h2>Change history</h2>
+            <p>Who changed this version and when — with the previous and new values. Kept permanently, also for deleted drafts.</p>
+          </div></div>
+          <app-change-log [versionId]="d.version.id" [refresh]="logTick()" />
+        </section>
         @if (editing(); as e) {
           <app-criterion-dialog [mode]="e.mode" [criterion]="e.criterion" [fields]="fields()" [existingKeys]="keys()" [startCustom]="e.custom"
                                 (done)="applyDialog($event)" (cancel)="editing.set(null)" (fieldsChanged)="reloadFields()" />
@@ -176,6 +204,9 @@ import { PublishDialogComponent, problem } from './publish-dialog.component';
     .topn input { width: 52px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
     .changes { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
     .changes li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); }
+    .attrib { margin-top: 4px; }
+    .conflict p { margin: 0 0 8px; }
+    .conflict-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     @media (max-width: 640px) { .head-top { flex-wrap: wrap; } .vno { width: 40px; height: 40px; } }
   `],
 })
@@ -203,7 +234,11 @@ export class MethodologyEditorPage {
   protected readonly loadError = signal<string | null>(null);
   protected readonly editing = signal<{ mode: 'edit' | 'add'; criterion: Criterion | null; index: number; custom: boolean } | null>(null);
 
-  protected readonly editable = computed(() => this.detail()?.version.status === 'Draft' && !this.detail()?.version.isBaseline);
+  protected readonly editable = computed(() =>
+    this.store.canEdit() && this.detail()?.version.status === 'Draft' && !this.detail()?.version.isBaseline);
+  /** Set when the server refused a save because someone else saved this draft first (optimistic concurrency). */
+  protected readonly conflict = signal<string | null>(null);
+  protected readonly logTick = signal(0);
   protected readonly keys = computed(() => (this.rules()?.criteria ?? []).map(c => c.key));
   protected readonly dirty = computed(() => {
     const d = this.detail();
@@ -286,6 +321,7 @@ export class MethodologyEditorPage {
 
   private setDetail(d: VersionDetail) {
     this.detail.set(d);
+    this.logTick.update(t => t + 1);
     this.rules.set(structuredClone(d.rules));
     this.name.set(d.version.name);
     this.summary.set(d.version.changeSummary ?? '');
@@ -303,13 +339,14 @@ export class MethodologyEditorPage {
   /** Edit: in a draft, opens the drawer; on a published version, opens (or creates) a working draft based on it. */
   protected openEdit(key: string) {
     const r = this.rules();
-    if (!r) return;
+    if (!r || !this.store.canEdit()) return;
     if (!this.editable()) { this.goToDraft({ edit: key }); return; }
     const index = r.criteria.findIndex(c => c.key === key);
     if (index >= 0) this.editing.set({ mode: 'edit', criterion: r.criteria[index], index, custom: false });
   }
 
   protected openAdd(custom = false) {
+    if (!this.store.canEdit()) return;
     if (!this.editable()) { this.goToDraft({ add: custom ? 'custom' : '1' }); return; }
     this.editing.set({ mode: 'add', criterion: null, index: -1, custom });
   }
@@ -354,9 +391,14 @@ export class MethodologyEditorPage {
     const d = this.detail(), r = this.rules();
     if (!d || !r) return;
     this.busy.set('save');
-    this.api.saveDraft(d.version.id, this.name().trim(), this.summary().trim() || null, r).subscribe({
+    this.conflict.set(null);
+    this.api.saveDraft(d.version.id, this.name().trim(), this.summary().trim() || null, r, d.version.revision).subscribe({
       next: nd => { this.busy.set(false); this.setDetail(nd); this.message.set({ text: 'Draft saved. Run the preview to see the effect on every site.', error: false }); },
-      error: (e: HttpErrorResponse) => { this.busy.set(false); this.message.set({ text: problem(e), error: true }); },
+      error: (e: HttpErrorResponse) => {
+        this.busy.set(false);
+        if (e.error?.code === 'draft_conflict') { this.conflict.set(problem(e)); this.message.set(null); }
+        else this.message.set({ text: problem(e), error: true });
+      },
     });
   }
 
@@ -384,11 +426,21 @@ export class MethodologyEditorPage {
 
   protected deleteDraft() {
     const d = this.detail();
-    if (!d || !confirm(`Delete draft “${d.version.name}”? This cannot be undone.`)) return;
-    this.api.deleteDraft(d.version.id).subscribe({
+    if (!d || !confirm(`Delete draft “${d.version.name}”? Its rules stay in the change history.`)) return;
+    this.api.deleteDraft(d.version.id, d.version.revision).subscribe({
       next: () => this.router.navigateByUrl('/methodology'),
-      error: (e: HttpErrorResponse) => this.message.set({ text: problem(e), error: true }),
+      error: (e: HttpErrorResponse) => {
+        if (e.error?.code === 'draft_conflict') this.conflict.set(problem(e));
+        else this.message.set({ text: problem(e), error: true });
+      },
     });
+  }
+
+  /** After a conflict: load the version someone else saved (local unsaved edits are discarded). */
+  protected reloadLatest() {
+    this.conflict.set(null);
+    this.message.set({ text: 'Loaded the latest saved version of this draft. Re-apply your edits if they are still needed.', error: false });
+    this.load(this.id());
   }
 
   protected val(e: Event) { return (e.target as HTMLInputElement).value; }

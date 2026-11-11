@@ -167,7 +167,8 @@ public class CustomFieldApiTests(CustomFieldWebAppFactory f) : IClassFixture<Cus
         var impact = Impact(preview, "zoningPenalty");
         Assert.Equal(1, impact.GetProperty("sitesNonZero").GetInt32());
         Assert.Equal(TestWebAppFactory.SeededSiteCount - 3, impact.GetProperty("sitesMissingData").GetInt32());
-        Assert.Equal(HttpStatusCode.NoContent, (await C.DeleteAsync($"/api/methodology/drafts/{draftId}")).StatusCode);
+        var rev = (await Json(await C.GetAsync($"/api/methodology/versions/{draftId}"))).GetProperty("version").GetProperty("revision").GetInt32();
+        Assert.Equal(HttpStatusCode.NoContent, (await C.DeleteAsync($"/api/methodology/drafts/{draftId}?revision={rev}")).StatusCode);
 
         // Removing a category that recorded values use is refused.
         var drop = await C.PutAsJsonAsync($"/api/custom-fields/{key}", new { label = "Zoning", type = "Category", source = "Imported", categories = new[] { "Permitted", "Conditional" } });
@@ -242,8 +243,11 @@ public class CustomFieldApiTests(CustomFieldWebAppFactory f) : IClassFixture<Cus
         return (d.GetProperty("version").GetProperty("id").GetInt32(), JsonSerializer.Deserialize<MethodologyRules>(d.GetProperty("rules").GetRawText(), J)!);
     }
 
-    private async Task<JsonElement> SaveAsync(int id, MethodologyRules rules) =>
-        await Json(await C.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name = $"custom draft {id}", changeSummary = "test", rules }, J));
+    private async Task<JsonElement> SaveAsync(int id, MethodologyRules rules)
+    {
+        var rev = (await Json(await C.GetAsync($"/api/methodology/versions/{id}"))).GetProperty("version").GetProperty("revision").GetInt32();
+        return await Json(await C.PutAsJsonAsync($"/api/methodology/drafts/{id}", new { name = $"custom draft {id}", changeSummary = "test", rules, expectedRevision = rev }, J));
+    }
 
     private async Task<JsonElement> PreviewAsync(int id) => await Json(await C.PostAsync($"/api/methodology/versions/{id}/preview?topN=5", null));
 

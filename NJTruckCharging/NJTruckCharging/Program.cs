@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
 using NJTruckCharging.Application;
@@ -20,6 +21,9 @@ if (DatabaseProvider.IsPostgres(builder.Configuration))
     // Access rule, allowlist/blocklist and the publishable key must form a working, non-empty configuration.
     SupabaseAuth.ValidateAccessConfiguration(builder.Configuration);
 }
+// Shared methodology editing: on PostgreSQL it needs sign-in and its own restricted writer login (fail-closed).
+MethodologyEditing.ValidateConfiguration(builder.Configuration);
+var methodologyCloudEditing = MethodologyEditing.IsCloudEditingEnabled(builder.Configuration);
 if (authEnabled) builder.Services.AddSupabaseAuth(builder.Configuration);
 
 builder.Services.AddApplication();
@@ -56,6 +60,33 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 builder.Services.AddHsts(o => { o.MaxAge = TimeSpan.FromDays(365); o.IncludeSubDomains = true; });
 
+// Rate limits for methodology changes, per signed-in user (Supabase user id). A recalculation (Review Results, Apply
+// Scoring, Restore) scores every site, so it is limited tightly; ordinary draft edits generously. Configurable:
+// Methodology:RateLimits:ScoringPerWindow / ScoringWindowSeconds / EditsPerMinute.
+builder.Services.AddRateLimiter(o =>
+{
+    var limits = builder.Configuration.GetSection("Methodology:RateLimits");
+    var scoringPermits = limits.GetValue("ScoringPerWindow", 6);
+    var scoringWindow = TimeSpan.FromSeconds(limits.GetValue("ScoringWindowSeconds", 600));
+    var editPermits = limits.GetValue("EditsPerMinute", 120);
+    o.AddPolicy(MethodologyEditing.ScoringRateLimitPolicy, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        MethodologyEditing.Partition(ctx), _ => new FixedWindowRateLimiterOptions { PermitLimit = scoringPermits, Window = scoringWindow, QueueLimit = 0 }));
+    o.AddPolicy(MethodologyEditing.EditRateLimitPolicy, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        MethodologyEditing.Partition(ctx), _ => new FixedWindowRateLimiterOptions { PermitLimit = editPermits, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    o.OnRejected = async (ctx, ct) =>
+    {
+        var retry = ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var after) ? (int)Math.Ceiling(after.TotalSeconds) : 60;
+        ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        ctx.HttpContext.Response.Headers.RetryAfter = retry.ToString();
+        await ctx.HttpContext.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
+        {
+            Status = 429,
+            Title = $"Too many scoring requests. Please wait about {Math.Max(1, (retry + 59) / 60)} minute(s) and try again.",
+            Extensions = { ["code"] = "rate_limited" }
+        }, options: null, contentType: "application/problem+json", cancellationToken: ct);
+    };
+});
+
 var app = builder.Build();
 
 if (builder.Configuration.GetValue<bool>("Hosting:BehindProxy")) app.UseForwardedHeaders();
@@ -91,14 +122,19 @@ if (authEnabled)
     app.UseAuthorization();
 }
 
+app.UseRateLimiter();
+
 // Read-only demo: every request that could change data is refused here, after sign-in is checked (so an anonymous
 // caller still gets 401) and before any controller runs — whatever the endpoint (bookmarks, contacts, research,
-// screening, feasibility, custom fields, methodology drafts/review/Apply Scoring/Restore, admin import/rescore).
+// screening, feasibility, custom fields, admin import/rescore). The ONLY exception: with
+// Methodology:CloudEditing:Enabled=true, the shared methodology editor endpoints (marked RequireMethodologyEditor,
+// matched by the routed endpoint's metadata, not by URL text), which write through the restricted writer login.
 if (readOnlyDemo)
 {
     app.Use(async (ctx, next) =>
     {
-        if (HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method) || HttpMethods.IsOptions(ctx.Request.Method))
+        if (HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method) || HttpMethods.IsOptions(ctx.Request.Method)
+            || MethodologyEditing.AllowedInReadOnlyMode(ctx, methodologyCloudEditing))
         {
             await next(ctx);
             return;

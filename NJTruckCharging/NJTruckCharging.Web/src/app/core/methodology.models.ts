@@ -24,6 +24,9 @@ export interface VersionSummary {
   rulesHash: string; changeSummary: string | null; basedOnVersionId: number | null;
   createdAtUtc: string; updatedAtUtc: string; publishedAtUtc: string | null; previewedAtUtc: string | null;
   previewCurrent: boolean; criteriaCount: number; enabledCount: number; identicalToBaseline: boolean;
+  /** Optimistic-concurrency revision: sent back when saving or deleting a draft. */
+  revision: number;
+  createdByEmail: string | null; updatedByEmail: string | null; publishedByEmail: string | null;
 }
 export interface CriterionView {
   key: string; name: string; category: string; enabled: boolean; builtIn: boolean; kind: CriterionKind; rule: string;
@@ -95,7 +98,20 @@ export interface ComparisonPage { total: number; page: number; pageSize: number;
 export interface Activation {
   id: number; versionId: number; versionName: string; previousVersionId: number | null;
   reason: 'Initial' | 'Publish' | 'Restore' | 'Reimport' | 'Rescore'; atUtc: string; sitesScored: number; note: string | null;
+  actorUserId: string | null; actorEmail: string | null;
 }
+export type ChangeAction = 'CreateDraft' | 'SaveDraft' | 'DeleteDraft' | 'Preview' | 'Publish' | 'Restore';
+/** One audit entry: who changed which version, when, and the previous → new values. */
+export interface ChangeLogEntry {
+  id: number; versionId: number; versionName: string; action: ChangeAction; atUtc: string;
+  actorUserId: string | null; actorEmail: string | null; revisionBefore: number | null; revisionAfter: number | null;
+  rulesHashBefore: string | null; rulesHashAfter: string | null; previousActiveVersionId: number | null;
+  changes: RuleChange[]; note: string | null; hasSnapshots: boolean;
+}
+export interface ChangeLogPage { total: number; page: number; pageSize: number; entries: ChangeLogEntry[]; }
+export interface VersionSnapshot { name: string; changeSummary: string | null; rules: MethodologyRules; }
+export interface ChangeSnapshot { id: number; before: VersionSnapshot | null; after: VersionSnapshot | null; }
+export interface EditingStatus { enabled: boolean; reason: string | null; }
 export interface PublishResult { activeVersionId: number; previousVersionId: number | null; sitesUpdated: number; elapsedMs: number; }
 
 export const CATEGORY_LABELS: Record<CriterionCategory, string> = {

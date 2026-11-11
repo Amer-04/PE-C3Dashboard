@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<Methodology.CustomFieldService>();
         services.AddSingleton<Methodology.ActiveMethodologyCache>();
         services.AddSingleton<Methodology.FieldStatsCache>();
+        services.AddSingleton<Methodology.ScoringJobGate>();
         return services;
     }
 }

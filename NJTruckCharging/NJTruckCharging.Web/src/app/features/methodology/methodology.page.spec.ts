@@ -5,13 +5,14 @@ import { of } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { MethodologyStore } from '../../core/methodology-store';
 import { SiteStore } from '../../core/site-store';
-import { ActiveMethodology, Criterion, ScoringFieldInfo, VersionSummary } from '../../core/methodology.models';
+import { Activation, ActiveMethodology, ChangeLogEntry, Criterion, ScoringFieldInfo, VersionSummary } from '../../core/methodology.models';
 import { MethodologyPage } from './methodology.page';
 
 const summary = (over: Partial<VersionSummary>): VersionSummary => ({
   id: 1, name: 'Original C3 workbook methodology', status: 'Published', isBaseline: true, isActive: true, isPreviousActive: false,
   rulesHash: 'h', changeSummary: null, basedOnVersionId: null, createdAtUtc: '2026-10-01T00:00:00Z', updatedAtUtc: '2026-10-01T00:00:00Z',
-  publishedAtUtc: '2026-10-01T00:00:00Z', previewedAtUtc: null, previewCurrent: false, criteriaCount: 1, enabledCount: 1, identicalToBaseline: true, ...over,
+  publishedAtUtc: '2026-10-01T00:00:00Z', previewedAtUtc: null, previewCurrent: false, criteriaCount: 1, enabledCount: 1, identicalToBaseline: true,
+  revision: 0, createdByEmail: null, updatedByEmail: null, publishedByEmail: null, ...over,
 });
 const port: Criterion = {
   key: 'port', name: 'Port', explanation: 'Proximity to a port.', category: 'TruckDemand', enabled: true, builtIn: true, kind: 'Cases',
@@ -28,15 +29,18 @@ const fields = [{ key: 'port', label: 'Distance to port', unit: 'mi', type: 'Num
   group: 'Demand', description: '' }] as unknown as ScoringFieldInfo[];
 
 describe('MethodologyPage (header and navigation)', () => {
-  function render(tab: string | undefined, versions: VersionSummary[]) {
+  function render(tab: string | undefined, versions: VersionSummary[], canEdit = true, activations: Activation[] = [], changes: ChangeLogEntry[] = []) {
     const act = signal<ActiveMethodology | null>(active);
+    const editing = signal({ enabled: canEdit, reason: canEdit ? null : 'Scoring rules are read-only on this deployment.' });
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         { provide: SiteStore, useValue: { powerEdisonSites: signal([]) } },
-        { provide: MethodologyStore, useValue: { active: act, versionId: computed(() => act()?.version.id ?? null), workingDraft: () => of(6) } },
+        { provide: MethodologyStore, useValue: { active: act, versionId: computed(() => act()?.version.id ?? null), workingDraft: () => of(6),
+          editing, canEdit: computed(() => editing().enabled), epoch: signal(0) } },
         { provide: ApiService, useValue: {
-          methodology: () => of([]), methodologyVersions: () => of(versions), methodologyActivations: () => of([]),
+          methodology: () => of([]), methodologyVersions: () => of(versions), methodologyActivations: () => of(activations),
+          methodologyChanges: () => of({ total: changes.length, page: 1, pageSize: 25, entries: changes }),
           methodologyFields: () => of(fields), customFields: () => of([]),
           methodologyVersion: (id: number) => of({ version: summary({ id }), rules: { schemaVersion: 1, criteria: [port] }, criteria: [], minPossible: 0, maxPossible: 4,
             changesVsActive: [], issues: [], preview: null }),
@@ -93,5 +97,38 @@ describe('MethodologyPage (header and navigation)', () => {
     f.detectChanges();
     const rows = [...el.querySelectorAll('.rl-details .rl-bands li')].map(r => r.textContent!.replace(/\s+/g, ' ').trim());
     expect(rows).toEqual(['5 mi or less+4 pts', 'More than 5 mi, up to 10 mi+2 pts', 'More than 10 mi0 pts']);
+  });
+
+  it('offers Add Rule and Edit Rule and says the method is shared when editing is enabled', () => {
+    const el: HTMLElement = render(undefined, [summary({})], true).nativeElement;
+    expect([...el.querySelectorAll('button')].some(b => b.textContent!.includes('Add Rule'))).toBe(true);
+    expect(el.querySelector('.rl-edit')).not.toBeNull();
+    expect(el.textContent).toContain('shared by the whole C3 team');
+  });
+
+  it('hides every editing control and explains why when this deployment is read-only', () => {
+    const el: HTMLElement = render(undefined, [summary({})], false).nativeElement;
+    expect([...el.querySelectorAll('button')].some(b => b.textContent!.includes('Add Rule'))).toBe(false);
+    expect(el.querySelector('.rl-edit')).toBeNull();
+    expect(el.textContent).toContain('Scoring rules are read-only on this deployment.');
+  });
+
+  it('history shows who applied each version and the team audit trail with e-mail and user id', () => {
+    const acts: Activation[] = [{ id: 9, versionId: 6, versionName: 'Higher port points', previousVersionId: 1, reason: 'Publish',
+      atUtc: '2026-11-11T10:00:00Z', sitesScored: 30584, note: null, actorUserId: 'e1e1e1e1-0000-4000-8000-0000000000e1', actorEmail: 'rules.editor@poweredison.com' }];
+    const changes: ChangeLogEntry[] = [{ id: 41, versionId: 6, versionName: 'Higher port points', action: 'SaveDraft', atUtc: '2026-11-11T09:00:00Z',
+      actorUserId: 'a11ce000-0000-4000-8000-00000000ad01', actorEmail: 'c3.admin.personal@gmail.com', revisionBefore: 1, revisionAfter: 2,
+      rulesHashBefore: 'aaaaaaaa11', rulesHashAfter: 'bbbbbbbb22', previousActiveVersionId: null, note: null, hasSnapshots: true,
+      changes: [{ key: 'port', name: 'Port', change: 'Modified', details: ['Rule: ≤ 5 mi: +4  →  ≤ 5 mi: +6'] }] }];
+    const f = render('history', [summary({ publishedByEmail: 'rules.editor@poweredison.com' })], true, acts, changes);
+    const el: HTMLElement = f.nativeElement;
+    expect(el.querySelector('.mm-log')!.textContent).toContain('rules.editor@poweredison.com');
+    expect(el.querySelector('.mm-version .vmeta')!.textContent).toContain('by rules.editor@poweredison.com');
+    const log = el.querySelector('app-change-log')!;
+    expect(log.textContent).toContain('Draft saved');
+    expect(log.textContent).toContain('c3.admin.personal@gmail.com');
+    expect(log.textContent).toContain('a11ce000');
+    expect(log.textContent).toContain('revision 1 → 2');
+    expect(log.textContent).toContain('≤ 5 mi: +4  →  ≤ 5 mi: +6');
   });
 });

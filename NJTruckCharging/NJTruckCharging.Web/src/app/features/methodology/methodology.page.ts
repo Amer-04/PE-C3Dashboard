@@ -10,6 +10,7 @@ import { Activation, Criterion, ScoringFieldInfo, VersionDetail, VersionSummary 
 import { explainScoring } from './criterion-text';
 import { problem } from './publish-dialog.component';
 import { CustomFieldsPanelComponent } from './custom-fields-panel.component';
+import { ChangeLogComponent } from './change-log.component';
 import { CriteriaBoardComponent, CriterionCardItem } from './criteria-board.component';
 
 type Tab = 'criteria' | 'draft' | 'history' | 'fields' | 'reference';
@@ -25,7 +26,7 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
  */
 @Component({
   selector: 'app-methodology-page',
-  imports: [DecimalPipe, DatePipe, RouterLink, CustomFieldsPanelComponent, CriteriaBoardComponent],
+  imports: [DecimalPipe, DatePipe, RouterLink, CustomFieldsPanelComponent, CriteriaBoardComponent, ChangeLogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="mm">
@@ -36,9 +37,16 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
             <h1 id="mm-title">Site Scoring Rules</h1>
             <p class="mm-hero-sub">These rules determine how potential truck charging locations are evaluated and ranked.</p>
           </div>
-          <button type="button" class="btn primary lg" (click)="addCriterion()" [disabled]="busy()">
-            <span aria-hidden="true">＋</span> Add Rule</button>
+          @if (methodology.canEdit()) {
+            <button type="button" class="btn primary lg" (click)="addCriterion()" [disabled]="busy()">
+              <span aria-hidden="true">＋</span> Add Rule</button>
+          }
         </div>
+        @if (!methodology.canEdit() && methodology.editing().reason) { <p class="mm-note">{{ methodology.editing().reason }}</p> }
+        @else if (methodology.canEdit()) {
+          <p class="mm-note">The scoring method is shared by the whole C3 team. Edits are made in a draft; applying a draft
+            recalculates every site's score and ranking for everyone, and every change is recorded with the editor's name.</p>
+        }
         @if (error()) { <p class="mm-note bad" role="alert">{{ error() }}</p> }
 
         <div class="mm-status">
@@ -103,7 +111,7 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
               </div>
             </div>
             @if (methodology.active()) {
-              <app-criteria-board [items]="cardItems()" [busy]="busy()" (edit)="editCriterion($event)" />
+              <app-criteria-board [items]="cardItems()" [busy]="busy()" [canEditRules]="methodology.canEdit()" (edit)="editCriterion($event)" />
             } @else {
               <p class="mm-muted">Loading the scoring rules…</p>
             }
@@ -155,7 +163,9 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
               <div class="mm-empty">
                 <b>No draft in progress</b>
                 <span>Use <b>Edit Rule</b> on any rule or <b>Add Rule</b> to start one. The active version stays live until you apply scoring.</span>
-                <button type="button" class="btn" (click)="startDraft()" [disabled]="busy()">Start a draft from v{{ methodology.versionId() }}</button>
+                @if (methodology.canEdit()) {
+                  <button type="button" class="btn" (click)="startDraft()" [disabled]="busy()">Start a draft from v{{ methodology.versionId() }}</button>
+                }
               </div>
             }
             @if (otherDrafts().length) {
@@ -196,7 +206,8 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
                       @if (v.isBaseline) { <span class="pill violet">Original baseline</span> } @else if (v.identicalToBaseline) { <span class="pill violet">= original</span> }
                     </div>
                     <div class="vmeta">Version {{ v.id }} · {{ v.enabledCount }} of {{ v.criteriaCount }} rules on ·
-                      @if (v.publishedAtUtc) { published {{ v.publishedAtUtc | date: 'medium' }} } @else { created {{ v.createdAtUtc | date: 'medium' }} }</div>
+                      @if (v.publishedAtUtc) { published {{ v.publishedAtUtc | date: 'medium' }}@if (v.publishedByEmail) { by {{ v.publishedByEmail }} } }
+                      @else { created {{ v.createdAtUtc | date: 'medium' }}@if (v.createdByEmail) { by {{ v.createdByEmail }} } }</div>
                     @if (v.changeSummary) { <div class="vsum" [title]="v.changeSummary">{{ v.changeSummary }}</div> }
                   </div>
                   <a class="btn small" [routerLink]="['/methodology/versions', v.id]">
@@ -212,12 +223,18 @@ const TABS: Tab[] = ['criteria', 'draft', 'history', 'fields', 'reference'];
                     @for (a of activations(); track a.id) {
                       <li><span class="mm-faint">{{ a.atUtc | date: 'medium' }}</span> — <b>{{ a.reason }}</b> v{{ a.versionId }} “{{ a.versionName }}”
                         @if (a.previousVersionId && a.previousVersionId !== a.versionId) { (was v{{ a.previousVersionId }}) }
-                        · {{ a.sitesScored | number }} sites @if (a.note) { · {{ a.note }} }</li>
+                        · {{ a.sitesScored | number }} sites @if (a.actorEmail) { · by <b [title]="'Supabase user id ' + a.actorUserId">{{ a.actorEmail }}</b> } @if (a.note) { · {{ a.note }} }</li>
                     }
                   </ul>
                 </div>
               </details>
             }
+            <details class="mm-ref" style="margin-top:12px">
+              <summary>Audit trail <small>every edit, review, apply and restore — who, when, previous → new values</small></summary>
+              <div class="mm-ref-body">
+                <app-change-log [versionId]="null" [refresh]="methodology.epoch()" />
+              </div>
+            </details>
           </section>
         }
 

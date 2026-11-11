@@ -101,9 +101,11 @@ const CATEGORY_ORDER = ['Access', 'Site', 'Truck demand', 'Charger gap', 'Bonus'
                   {{ isOpen(c.key) ? 'Show Less' : 'Show More' }}
                   <svg class="rl-icon rl-chev" [class.up]="isOpen(c.key)" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg>
                 </button>
+                @if (canEditRules()) {
                 <button type="button" class="btn rl-btn rl-edit" [disabled]="busy()" (click)="edit.emit(c.key)" [attr.aria-label]="'Edit Rule: ' + c.name">
                   <svg class="rl-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13.5 3.5l3 3L7 16H4v-3z" /></svg>
                   Edit Rule</button>
+                }
                 @if (editable()) {
                   <label class="mm-switch rl-switch" [title]="c.enabled ? 'Turn this rule off in the draft' : 'Turn this rule on in the draft'">
                     <input type="checkbox" [checked]="c.enabled" (change)="toggle.emit(c.key)" [attr.aria-label]="(c.enabled ? 'Turn off ' : 'Turn on ') + c.name" />
@@ -128,6 +130,8 @@ export class CriteriaBoardComponent {
   readonly items = input.required<CriterionCardItem[]>();
   /** Draft mode: on/off switches and Remove (for added criteria) are shown. */
   readonly editable = input(false);
+  /** False when this deployment does not accept methodology changes (hides "Edit Rule"). */
+  readonly canEditRules = input(true);
   readonly busy = input(false);
   readonly changedKeys = input<string[]>([]);
   readonly issues = input<Record<string, ValidationIssue[]>>({});

@@ -14,6 +14,12 @@ export class MethodologyStore {
   private readonly api = inject(ApiService);
 
   readonly active = signal<ActiveMethodology | null>(null);
+  /**
+   * Whether this deployment accepts methodology changes (cloud: Methodology:CloudEditing on Render). Only decides what the
+   * dashboard offers; the API checks every change itself (signed-in approved user, restricted writer login).
+   */
+  readonly editing = signal<{ enabled: boolean; reason: string | null }>({ enabled: false, reason: null });
+  readonly canEdit = computed(() => this.editing().enabled);
   /** Increments whenever the active methodology changes after the first load. Views re-fetch on change. */
   readonly epoch = signal(0);
   readonly versionId = computed(() => this.active()?.version.id ?? null);
@@ -29,7 +35,15 @@ export class MethodologyStore {
   private known: number | null = null;
 
   // Deferred: the first request passes through the interceptor, which injects this store.
-  constructor() { queueMicrotask(() => this.refresh()); }
+  constructor() {
+    queueMicrotask(() => {
+      this.refresh();
+      this.api.methodologyEditing().subscribe({
+        next: e => this.editing.set(e),
+        error: () => this.editing.set({ enabled: false, reason: 'Editing status is unavailable right now.' }),
+      });
+    });
+  }
 
   refresh() {
     this.api.activeMethodology().subscribe({

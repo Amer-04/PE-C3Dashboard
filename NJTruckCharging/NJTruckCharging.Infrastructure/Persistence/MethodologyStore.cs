@@ -8,7 +8,13 @@ using NJTruckCharging.Domain.Methodology;
 
 namespace NJTruckCharging.Infrastructure.Persistence;
 
-public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILogger<MethodologyStore> logger) : IMethodologyStore
+/// <summary>
+/// Methodology persistence. Uses the methodology-writer context (see <see cref="DependencyInjection.MethodologyWriterKey"/>):
+/// in the cloud this is the only code that connects with write permissions, and only to methodology data.
+/// </summary>
+public sealed class MethodologyStore(
+    [Microsoft.Extensions.DependencyInjection.FromKeyedServices(DependencyInjection.MethodologyWriterKey)] AppDbContext db,
+    IActivationHook hook, ILogger<MethodologyStore> logger) : IMethodologyStore
 {
     public Task<MethodologyState?> GetStateAsync(CancellationToken ct = default) =>
         db.MethodologyState.AsNoTracking().FirstOrDefaultAsync(s => s.Id == 1, ct);
@@ -33,6 +39,29 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
     }
 
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
+
+    public void AddChange(MethodologyChange change) => db.MethodologyChanges.Add(change);
+
+    public async Task<int> PruneStoredScoresAsync(IReadOnlyCollection<int> keepVersionIds, CancellationToken ct = default)
+    {
+        var keep = keepVersionIds.ToList();
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+            if (!await ScoringLock.TryAcquireAsync(db, ct)) return -1;
+            var prune = await db.MethodologyVersions
+                .Where(v => v.PreviewRulesHash != null && !keep.Contains(v.Id)).Select(v => v.Id).ToListAsync(ct);
+            if (prune.Count == 0) return 0;
+            await db.SiteVersionScores.Where(s => prune.Contains(s.MethodologyVersionId)).ExecuteDeleteAsync(ct);
+            await db.MethodologyVersions.Where(v => prune.Contains(v.Id)).ExecuteUpdateAsync(u => u
+                .SetProperty(v => v.PreviewRulesHash, (string?)null)
+                .SetProperty(v => v.ScoresDataVersion, (int?)null), ct);
+            await tx.CommitAsync(ct);
+            return prune.Count;
+        });
+    }
 
     public async Task EnsureStateAsync(CancellationToken ct = default)
     {
@@ -141,13 +170,20 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
                 if (previous != version.Id) state.PreviousActiveVersionId = previous;
                 state.ActiveVersionId = version.Id;
                 state.ActivatedAtUtc = cmd.Now;
-                version.Status = MethodologyVersionStatus.Published;
-                version.PublishedAtUtc ??= cmd.Now;
+                if (version.Status != MethodologyVersionStatus.Published)
+                {
+                    version.Status = MethodologyVersionStatus.Published;
+                    version.PublishedAtUtc ??= cmd.Now;
+                    version.PublishedByUserId = cmd.ActorUserId;
+                    version.PublishedByEmail = cmd.ActorEmail;
+                }
                 db.MethodologyActivations.Add(new MethodologyActivation
                 {
                     VersionId = version.Id, PreviousVersionId = previous, Reason = cmd.Reason, AtUtc = cmd.Now,
-                    SitesScored = updated, DataVersion = state.DataVersion, Note = cmd.Note
+                    SitesScored = updated, DataVersion = state.DataVersion, Note = cmd.Note,
+                    ActorUserId = cmd.ActorUserId, ActorEmail = cmd.ActorEmail,
                 });
+                if (cmd.Audit is { } audit) db.MethodologyChanges.Add(audit);
                 await db.SaveChangesAsync(ct);   // RowVersion guards the pointer against concurrent writers
                 await tx.CommitAsync(ct);
                 return new ActivateResult(ActivationFailure.None, null, updated, previous);
@@ -159,8 +195,9 @@ public sealed class MethodologyStore(AppDbContext db, IActivationHook hook, ILog
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // The database error text stays in the server log; the caller only learns that nothing changed.
             logger.LogError(ex, "Methodology activation of version {Version} failed and was rolled back", cmd.VersionId);
-            return Fail(ActivationFailure.Failed, "Publishing failed and was rolled back; the active methodology is unchanged. " + ex.Message);
+            return Fail(ActivationFailure.Failed, "Applying scoring failed and was fully rolled back: the active scoring method, scores and rankings are unchanged. Try again later; if it keeps failing, contact the administrator.");
         }
         finally
         {
