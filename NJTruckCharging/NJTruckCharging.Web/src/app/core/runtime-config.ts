@@ -12,11 +12,15 @@ export interface RuntimeConfig {
   supabaseUrl: string;
   supabasePublishableKey: string;
   readOnly: boolean;
+  /** Show "Create account". Off until Supabase sign-ups, custom SMTP and the Before User Created hook are in place. */
+  selfRegistration: boolean;
 }
 
 export const RUNTIME_CONFIG = new InjectionToken<RuntimeConfig>('RUNTIME_CONFIG');
 
-export const LOCAL_CONFIG: RuntimeConfig = { apiBaseUrl: '', supabaseUrl: '', supabasePublishableKey: '', readOnly: false };
+export const LOCAL_CONFIG: RuntimeConfig = {
+  apiBaseUrl: '', supabaseUrl: '', supabasePublishableKey: '', readOnly: false, selfRegistration: false,
+};
 
 export function authEnabled(c: RuntimeConfig): boolean {
   return !!c.supabaseUrl && !!c.supabasePublishableKey;
@@ -32,6 +36,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
       supabaseUrl: (j.supabaseUrl ?? '').replace(/\/+$/, ''),
       supabasePublishableKey: j.supabasePublishableKey ?? '',
       readOnly: !!j.readOnly,
+      selfRegistration: j.selfRegistration === true,
     };
   } catch {
     return LOCAL_CONFIG;

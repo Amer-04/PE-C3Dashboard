@@ -15,10 +15,11 @@ namespace NJTruckCharging.Tests.Integration;
 
 /// <summary>
 /// The app configured as the cloud demo: Supabase sign-in (JWT signature/issuer/audience/expiry checked on the server),
-/// a server-side allowlist of Supabase user ids, and read-only mode. Tokens are signed with a test ES256 key that
-/// stands in for the Supabase project's signing key.
+/// the account check against Supabase (replaced by <see cref="FakeSupabaseUsers"/>), the configured access rule, and
+/// read-only mode. Tokens are signed with a test ES256 key that stands in for the Supabase project's signing key.
+/// This factory runs the original rule (<c>Auth:AccessRule</c> unset = UserIds: a server-side allowlist of user ids).
 /// </summary>
-public sealed class CloudAuthWebAppFactory : TestWebAppFactory
+public class CloudAuthWebAppFactory : TestWebAppFactory
 {
     public const string ProjectUrl = "https://testproject.supabase.co";
     public static readonly Guid ApprovedUser = Guid.Parse("6f1d3c52-7a0e-4b8e-9d2a-1c5b8e7f9a01");
@@ -26,18 +27,36 @@ public sealed class CloudAuthWebAppFactory : TestWebAppFactory
 
     public static ECDsaSecurityKey SigningKey { get; } = NewKey("supabase-test-key");
 
+    /// <summary>Stands in for Supabase's user database (what <c>GET /auth/v1/user</c> would answer).</summary>
+    public FakeSupabaseUsers Users { get; } = new();
+
     protected override string DatabaseName => "NJTruckCharging_CloudAuthTest";
 
     public static ECDsaSecurityKey NewKey(string kid) => new(ECDsa.Create(ECCurve.NamedCurves.nistP256)) { KeyId = kid };
+
+    public CloudAuthWebAppFactory()
+    {
+        Users.Add(ApprovedUser, "approved.employee@poweredison.com");
+        Users.Add(UninvitedUser, "uninvited.employee@poweredison.com");
+    }
+
+    /// <summary>Access settings; the base factory keeps the original user-id allowlist.</summary>
+    protected virtual void ConfigureAccess(IWebHostBuilder builder) =>
+        builder.UseSetting("Auth:AllowedUserIds", ApprovedUser.ToString());
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting("Auth:Mode", "Supabase");
         builder.UseSetting("Auth:Supabase:Url", ProjectUrl);
-        builder.UseSetting("Auth:AllowedUserIds", ApprovedUser.ToString());
+        builder.UseSetting("Auth:Supabase:PublishableKey", "sb_publishable_test");
+        ConfigureAccess(builder);
         builder.UseSetting("ReadOnlyDemo:Enabled", "true");
-        builder.ConfigureServices(s => s.AddSingleton<IStartupFilter>(new KeysFilter()));
+        builder.ConfigureServices(s =>
+        {
+            s.AddSingleton<IStartupFilter>(new KeysFilter());
+            s.AddSingleton<ISupabaseUserDirectory>(Users);
+        });
     }
 
     /// <summary>Installs the test signing key in place of the project's JWKS once the host is built.</summary>
@@ -51,7 +70,12 @@ public sealed class CloudAuthWebAppFactory : TestWebAppFactory
     }
 
     /// <summary>A Supabase-shaped access token. Every argument can be bent to produce an invalid one.</summary>
-    public static string Token(Guid? user = null, SecurityKey? key = null, string? issuer = null, string audience = "authenticated",
+    public string Token(Guid? user = null, SecurityKey? key = null, string? issuer = null, string audience = "authenticated",
+        DateTime? expires = null, string role = "authenticated", bool anonymous = false, string? email = null) =>
+        MakeToken(user ?? ApprovedUser, email ?? Users.EmailOf(user ?? ApprovedUser) ?? "someone@example.com",
+            key, issuer, audience, expires, role, anonymous);
+
+    public static string MakeToken(Guid user, string email, SecurityKey? key = null, string? issuer = null, string audience = "authenticated",
         DateTime? expires = null, string role = "authenticated", bool anonymous = false)
     {
         var now = DateTime.UtcNow;
@@ -65,8 +89,8 @@ public sealed class CloudAuthWebAppFactory : TestWebAppFactory
             Expires = exp,
             Claims = new Dictionary<string, object>
             {
-                ["sub"] = (user ?? ApprovedUser).ToString(),
-                ["email"] = "someone@example.com",
+                ["sub"] = user.ToString(),
+                ["email"] = email,
                 ["role"] = role,
                 ["is_anonymous"] = anonymous,
             },
@@ -85,9 +109,12 @@ public sealed class CloudAuthWebAppFactory : TestWebAppFactory
 
 public class CloudAuthApiTests(CloudAuthWebAppFactory f) : IClassFixture<CloudAuthWebAppFactory>, IAsyncLifetime
 {
-    private static string T(Guid? user = null, SecurityKey? key = null, string? issuer = null, string audience = "authenticated",
+    private string T(Guid? user = null, SecurityKey? key = null, string? issuer = null, string audience = "authenticated",
         DateTime? expires = null, string role = "authenticated", bool anonymous = false) =>
-        CloudAuthWebAppFactory.Token(user, key, issuer, audience, expires, role, anonymous);
+        f.Token(user, key, issuer, audience, expires, role, anonymous);
+
+    private static string Signed(SecurityKey? key = null, string? issuer = null, string audience = "authenticated", DateTime? expires = null) =>
+        CloudAuthWebAppFactory.MakeToken(CloudAuthWebAppFactory.ApprovedUser, "approved.employee@poweredison.com", key, issuer, audience, expires);
 
     public Task InitializeAsync() => f.EnsureSeededAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -136,15 +163,15 @@ public class CloudAuthApiTests(CloudAuthWebAppFactory f) : IClassFixture<CloudAu
         var other = CloudAuthWebAppFactory.NewKey("supabase-test-key");                  // same key id, wrong key
         return new()
         {
-            { "expired", T(expires: DateTime.UtcNow.AddMinutes(-5)) },
-            { "signed by another key", T(key: other) },
-            { "unknown key id", T(key: CloudAuthWebAppFactory.NewKey("someone-else")) },
-            { "HS256 with a guessed secret", T(key: new SymmetricSecurityKey(Encoding.UTF8.GetBytes("a-guessed-secret-that-is-long-enough-32b"))) },
-            { "another Supabase project", T(issuer: "https://otherproject.supabase.co/auth/v1") },
-            { "wrong audience", T(audience: "anon") },
+            { "expired", Signed(expires: DateTime.UtcNow.AddMinutes(-5)) },
+            { "signed by another key", Signed(key: other) },
+            { "unknown key id", Signed(key: CloudAuthWebAppFactory.NewKey("someone-else")) },
+            { "HS256 with a guessed secret", Signed(key: new SymmetricSecurityKey(Encoding.UTF8.GetBytes("a-guessed-secret-that-is-long-enough-32b"))) },
+            { "another Supabase project", Signed(issuer: "https://otherproject.supabase.co/auth/v1") },
+            { "wrong audience", Signed(audience: "anon") },
             { "garbage", "not-a-jwt" },
             { "unsigned (alg none)", UnsignedToken() },
-            { "tampered payload", Tamper(T()) },
+            { "tampered payload", Tamper(Signed()) },
         };
     }
 
@@ -152,8 +179,11 @@ public class CloudAuthApiTests(CloudAuthWebAppFactory f) : IClassFixture<CloudAu
     [MemberData(nameof(BadTokens))]
     public async Task Invalid_tokens_get_401(string why, string token)
     {
+        var lookups = f.Users.Lookups;
         var r = await f.ClientWith(token).GetAsync("/api/sites?pageSize=5");
         Assert.True(r.StatusCode == HttpStatusCode.Unauthorized, $"{why}: expected 401, got {(int)r.StatusCode}");
+        // A forged or expired token is refused before the API ever asks Supabase about it.
+        Assert.Equal(lookups, f.Users.Lookups);
     }
 
     [Fact]

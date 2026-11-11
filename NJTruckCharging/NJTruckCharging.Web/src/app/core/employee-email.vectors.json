@@ -1,0 +1,38 @@
+{
+  "_comment": "Shared test vectors for the employee e-mail rule. Used by the API tests (EmployeeEmailPolicyTests), the Angular tests (employee-email.spec.ts) and the Supabase hook test (CloudCopy/sql/tests/test-07-hook.mjs). Only exactly poweredison.com and ev-edison.com, case-insensitive.",
+  "allowed": [
+    "pat@poweredison.com",
+    "pat@ev-edison.com",
+    "Pat.Lee@PowerEdison.com",
+    "PAT@EV-EDISON.COM",
+    "first.last+c3@poweredison.com",
+    "a@ev-edison.com"
+  ],
+  "refused": [
+    "pat@gmail.com",
+    "pat@poweredison.co",
+    "pat@poweredison.com.evil.io",
+    "pat@mail.poweredison.com",
+    "pat@sub.ev-edison.com",
+    "pat@evedison.com",
+    "pat@ev_edison.com",
+    "pat@power-edison.com",
+    "pat@poweredison.com.",
+    "pat@xpoweredison.com",
+    "pat@ev-edison.co",
+    "pat@poweredіson.com",
+    "pat@ev‐edison.com",
+    "pat@poweredison.com ",
+    " pat@poweredison.com",
+    "pat @poweredison.com",
+    "pat@@poweredison.com",
+    "pat@evil.com@poweredison.com",
+    "\"pat@poweredison.com\"@evil.com",
+    "pat@evil.com\npat@poweredison.com",
+    "poweredison.com",
+    "@poweredison.com",
+    "pat@",
+    "pat",
+    ""
+  ]
+}
