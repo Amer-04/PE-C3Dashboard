@@ -23,6 +23,8 @@ public sealed class MethodologyEditingWebAppFactory : CloudAuthWebAppFactory
     public const string ColleagueEmail = "second.editor@ev-edison.com";
     public static readonly Guid Admin = Guid.Parse("a11ce000-0000-4000-8000-00000000ad01");
     public const string AdminEmail = "c3.admin.personal@gmail.com";
+    /// <summary>The production dashboard origin (Render: Cors__Origins__0).</summary>
+    public const string DashboardOrigin = "https://c3dashboard.netlify.app";
 
     protected override string DatabaseName => "NJTruckCharging_MethodologyEditingTest";
 
@@ -38,6 +40,7 @@ public sealed class MethodologyEditingWebAppFactory : CloudAuthWebAppFactory
         builder.UseSetting("Auth:AccessRule", "EmailDomain");
         builder.UseSetting("Auth:DomainExceptionUserIds", Admin.ToString());
         builder.UseSetting("Methodology:CloudEditing:Enabled", "true");
+        builder.UseSetting("Cors:Origins:0", DashboardOrigin);
     }
 }
 

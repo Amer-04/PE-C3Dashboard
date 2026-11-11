@@ -49,6 +49,49 @@ public static class MethodologyEditing
         if (string.IsNullOrEmpty(writeUser) || string.Equals(readUser, writeUser, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
                 $"ConnectionStrings:{DependencyInjection.MethodologyWriterConnectionName} must use its own login (the methodology writer role), not the read-only login.");
+
+        // Browser edits are accepted only from these EXACT origins (the dashboard), so they must be precise.
+        var origins = config.GetSection("Cors:Origins").Get<string[]>() ?? [];
+        if (origins.Length == 0)
+            throw new InvalidOperationException($"{EnabledKey}=true requires Cors:Origins (the exact dashboard origin, e.g. https://c3dashboard.netlify.app).");
+        foreach (var o in origins)
+            if (!IsExactHttpsOrigin(o))
+                throw new InvalidOperationException(
+                    $"Cors:Origins entry '{o}' must be an exact https origin (scheme://host[:port], no wildcard, path, query or trailing slash).");
+    }
+
+    /// <summary>True for "https://host" or "https://host:port" exactly as a browser sends it in the Origin header.</summary>
+    public static bool IsExactHttpsOrigin(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Contains('*') || value != value.Trim()) return false;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps) return false;
+        if (!string.IsNullOrEmpty(u.UserInfo) || !string.IsNullOrEmpty(u.Query) || !string.IsNullOrEmpty(u.Fragment)) return false;
+        var canonical = u.IsDefaultPort ? $"{u.Scheme}://{u.Host}" : $"{u.Scheme}://{u.Host}:{u.Port}";
+        return string.Equals(canonical, value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Decides whether a methodology change request may come from where it says it comes from (defence in depth; the
+    /// bearer token is the real control and is never sent automatically by a browser).
+    /// <list type="bullet">
+    /// <item>Origin present: it must EXACTLY equal a trusted origin (Cors:Origins) or the API's own origin. Then the request
+    /// is accepted whatever Sec-Fetch-Site says - the dashboard (netlify.app) and the API (onrender.com) are different
+    /// sites, so a browser always marks the dashboard's legitimate requests "cross-site". Any other origin, including
+    /// "null", lookalikes, http:// variants and deploy previews, is refused.</item>
+    /// <item>No Origin: a browser request marked cross-site/same-site without its origin is refused; a request without
+    /// Fetch-Metadata (curl, server-to-server) is allowed - authentication still decides.</item>
+    /// </list>
+    /// </summary>
+    public static (bool Allowed, string Reason) EvaluateRequestSource(string? origin, string? secFetchSite, IReadOnlyCollection<string> trustedOrigins, string selfOrigin)
+    {
+        if (!string.IsNullOrEmpty(origin))
+        {
+            var trusted = trustedOrigins.Any(t => string.Equals(t, origin, StringComparison.OrdinalIgnoreCase))
+                          || string.Equals(origin, selfOrigin, StringComparison.OrdinalIgnoreCase);
+            return trusted ? (true, "trusted origin") : (false, "untrusted origin");
+        }
+        var site = (secFetchSite ?? "").Trim().ToLowerInvariant();
+        return site is "cross-site" or "same-site" ? (false, "browser request without an origin") : (true, "no browser origin");
     }
 
     /// <summary>The read-only gate lets a request through only if editing is on and it targets a marked editor endpoint.</summary>
@@ -71,8 +114,14 @@ public static class MethodologyEditing
 /// authorization policy, and checks again here so that a misconfigured route can never skip it.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
-public sealed class RequireMethodologyEditorAttribute : Attribute, IAsyncActionFilter
+public sealed class RequireMethodologyEditorAttribute : Attribute, IAsyncActionFilter, IOrderedFilter
 {
+    /// <summary>
+    /// Runs before every other action filter - in particular before [ApiController]'s automatic model validation
+    /// (order -2000) - so an untrusted caller is refused before its request body is even validated.
+    /// </summary>
+    public int Order => int.MinValue + 1000;
+
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var http = context.HttpContext;
@@ -111,17 +160,12 @@ public sealed class RequireMethodologyEditorAttribute : Attribute, IAsyncActionF
         await next();
     }
 
-    /// <summary>A browser request must come from the dashboard itself (defence in depth; bearer tokens are not ambient).</summary>
+    /// <summary>A browser request must come from an exactly trusted origin (see <see cref="MethodologyEditing.EvaluateRequestSource"/>).</summary>
     private static bool CrossSite(HttpContext http, IConfiguration config)
     {
-        var origin = http.Request.Headers.Origin.ToString();
-        if (!string.IsNullOrEmpty(origin))
-        {
-            var allowed = config.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:4200"];
-            var self = $"{http.Request.Scheme}://{http.Request.Host}";
-            if (!allowed.Contains(origin, StringComparer.OrdinalIgnoreCase) && !string.Equals(origin, self, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return string.Equals(http.Request.Headers["Sec-Fetch-Site"].ToString(), "cross-site", StringComparison.OrdinalIgnoreCase);
+        var trusted = config.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:4200"];
+        var self = $"{http.Request.Scheme}://{http.Request.Host}";
+        return !MethodologyEditing.EvaluateRequestSource(
+            http.Request.Headers.Origin.ToString(), http.Request.Headers["Sec-Fetch-Site"].ToString(), trusted, self).Allowed;
     }
 }

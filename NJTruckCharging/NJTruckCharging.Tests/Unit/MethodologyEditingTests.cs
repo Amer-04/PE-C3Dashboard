@@ -33,10 +33,59 @@ public class MethodologyEditingTests
     [Fact]
     public void Cloud_editing_with_a_separate_writer_login_starts()
     {
-        var c = Config(Cloud(("Methodology:CloudEditing:Enabled", "true"), ("ConnectionStrings:MethodologyWriter", WriterLogin)));
+        var c = Config(Cloud(("Methodology:CloudEditing:Enabled", "true"), ("ConnectionStrings:MethodologyWriter", WriterLogin),
+            ("Cors:Origins:0", "https://c3dashboard.netlify.app")));
         MethodologyEditing.ValidateConfiguration(c);
         Assert.True(MethodologyEditing.IsCloudEditingEnabled(c));
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("*")]
+    [InlineData("https://*.netlify.app")]
+    [InlineData("http://c3dashboard.netlify.app")]
+    [InlineData("https://c3dashboard.netlify.app/")]
+    [InlineData("https://c3dashboard.netlify.app/app")]
+    [InlineData("https://c3dashboard.netlify.app?x=1")]
+    [InlineData(" https://c3dashboard.netlify.app")]
+    [InlineData("c3dashboard.netlify.app")]
+    public void Cloud_editing_refuses_to_start_without_exact_https_dashboard_origins(string? origin)
+    {
+        var settings = Cloud(("Methodology:CloudEditing:Enabled", "true"), ("ConnectionStrings:MethodologyWriter", WriterLogin));
+        if (origin is not null) settings = [.. settings, ("Cors:Origins:0", origin)];
+        var ex = Assert.Throws<InvalidOperationException>(() => MethodologyEditing.ValidateConfiguration(Config(settings)));
+        Assert.Contains("Cors:Origins", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("https://c3dashboard.netlify.app", true)]
+    [InlineData("https://example.com:8443", true)]
+    [InlineData("https://example.com:443", false)]   // a browser sends the default port omitted
+    [InlineData("https://C3DASHBOARD.netlify.app", true)]
+    [InlineData("https://user@c3dashboard.netlify.app", false)]
+    [InlineData("https://c3dashboard.netlify.app#x", false)]
+    [InlineData("", false)]
+    public void Exact_https_origin_format(string value, bool expected) =>
+        Assert.Equal(expected, MethodologyEditing.IsExactHttpsOrigin(value));
+
+    // Origin x Sec-Fetch-Site decision table (the dashboard and the API are different sites in production).
+    [Theory]
+    [InlineData("https://c3dashboard.netlify.app", "cross-site", true)]   // the production dashboard
+    [InlineData("https://c3dashboard.netlify.app", "same-site", true)]
+    [InlineData("https://c3dashboard.netlify.app", null, true)]
+    [InlineData("https://api.example", "same-origin", true)]              // the API's own origin
+    [InlineData("https://evil.example", "cross-site", false)]
+    [InlineData("https://evil.example", "same-origin", false)]            // a forged Sec-Fetch-Site cannot help
+    [InlineData("https://c3dashboard.netlify.app.evil.com", "cross-site", false)]
+    [InlineData("http://c3dashboard.netlify.app", "cross-site", false)]
+    [InlineData("null", "cross-site", false)]
+    [InlineData(null, "cross-site", false)]                               // a browser request without its origin
+    [InlineData(null, "same-site", false)]
+    [InlineData(null, "same-origin", true)]
+    [InlineData(null, "none", true)]
+    [InlineData(null, null, true)]                                        // non-browser client: sign-in still decides
+    public void Request_source_decision(string? origin, string? fetchSite, bool allowed) =>
+        Assert.Equal(allowed, MethodologyEditing.EvaluateRequestSource(origin, fetchSite, ["https://c3dashboard.netlify.app"], "https://api.example").Allowed);
 
     [Theory]
     [InlineData(null)]
